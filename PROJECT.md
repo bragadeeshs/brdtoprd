@@ -128,9 +128,9 @@ Effort tags: `S` (≤2h), `M` (half-day), `L` (1–2 days), `XL` (3+ days)
 
 ## M1.8 Mobile responsive
 
-- [ ] **M1.8.1** Below 1024px: sidebar collapses behind a hamburger; off-canvas overlay — `Sidebar.jsx`, `App.jsx` — L
-- [ ] **M1.8.2** Below 768px: source pane and artifacts pane stack vertically with a tab switch — `App.jsx` — L
-- [ ] **M1.8.3** Gaps rail becomes a bottom-sheet on mobile — `GapsRail.jsx` — M
+- [-] **M1.8.1** Below 1024px: sidebar collapses behind a hamburger; off-canvas overlay — `Sidebar.jsx`, `App.jsx` — L _(deferred 2026-04-23 — desktop-first for v1; revisit when mobile users become a target)_
+- [-] **M1.8.2** Below 768px: source pane and artifacts pane stack vertically with a tab switch — `App.jsx` — L _(deferred 2026-04-23 — same)_
+- [-] **M1.8.3** Gaps rail becomes a bottom-sheet on mobile — `GapsRail.jsx` — M _(deferred 2026-04-23 — same)_
 
 ## M1.9 Polish
 
@@ -139,6 +139,8 @@ Effort tags: `S` (≤2h), `M` (half-day), `L` (1–2 days), `XL` (3+ days)
 - [x] **M1.9.3** Copy-per-artifact: hover any story/gap reveals a copy icon — `ArtifactsPane.jsx`, `GapsRail.jsx` — M _(generic `.has-action`/`.row-action` CSS class; copy buttons emit markdown via shared `lib/clipboard.js`; story copy includes ID/actor/want/so-that/section/criteria; gap copy uses the same markdown as Ask but doesn't set askedAt)_
 
 **M1 ship gate**: all sidebar items either work or are removed. Documents page lists past extractions. Settings persists API key + model. No fake controls.
+
+**M1 status (2026-04-23):** ✅ **Shipped (27/30)** — all 8 active sub-modules complete. M1.8 (mobile responsive, 3 tasks) deferred per user decision; revisit when mobile users become a target.
 
 ---
 
