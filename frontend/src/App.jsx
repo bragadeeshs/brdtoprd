@@ -133,6 +133,7 @@ function LoadingState({ filename }) {
 
 export default function App() {
   const [extraction, setExtraction] = useState(null)
+  const [extractionId, setExtractionId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
   const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
@@ -174,8 +175,9 @@ export default function App() {
     setPendingName(file ? file.name : filename)
     try {
       const result = await extract({ file, text, filename })
-      saveExtraction(result)
+      const record = saveExtraction(result)
       setExtraction(result)
+      setExtractionId(record?.id || null)
       // Ensure the result view is visible no matter where the extraction was triggered from
       if (location.pathname !== '/') navigate('/')
     } catch (e) {
@@ -188,11 +190,14 @@ export default function App() {
 
   const reset = () => {
     setExtraction(null)
+    setExtractionId(null)
     if (!isHome) navigate('/')
   }
 
-  const restoreExtraction = (payload) => {
-    setExtraction(payload)
+  // Now takes the full record so we can track the id (needed by gap-state)
+  const restoreExtraction = (record) => {
+    setExtraction(record.payload)
+    setExtractionId(record.id)
     if (!isHome) navigate('/')
   }
 
@@ -235,7 +240,9 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      {isHome && extraction && !loading && showGaps && <GapsRail gaps={extraction.gaps} />}
+      {isHome && extraction && !loading && showGaps && (
+        <GapsRail gaps={extraction.gaps} extractionId={extractionId} />
+      )}
     </div>
     </AppProvider>
   )

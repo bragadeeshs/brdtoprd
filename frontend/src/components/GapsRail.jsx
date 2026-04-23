@@ -1,34 +1,255 @@
-import React from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { getGapStates, setGapState } from '../lib/store.js'
+import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
-import { AlertTriangle, AlertCircle, HelpCircle, CheckCircle } from './icons.jsx'
+import {
+  AlertCircle,
+  AlertTriangle,
+  Check,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  HelpCircle,
+  MessageSquare,
+} from './icons.jsx'
 
 const SEVERITY_ORDER = { high: 0, med: 1, low: 2 }
 
 const SEVERITY_META = {
-  high: {
-    tone: 'danger',
-    badge: 'danger',
-    icon: <AlertTriangle size={14} />,
-    label: 'High',
-  },
-  med: {
-    tone: 'warn',
-    badge: 'warn',
-    icon: <AlertCircle size={14} />,
-    label: 'Medium',
-  },
-  low: {
-    tone: 'info',
-    badge: 'info',
-    icon: <HelpCircle size={14} />,
-    label: 'Low',
-  },
+  high: { tone: 'danger', icon: <AlertTriangle size={14} />, label: 'High' },
+  med: { tone: 'warn', icon: <AlertCircle size={14} />, label: 'Medium' },
+  low: { tone: 'info', icon: <HelpCircle size={14} />, label: 'Low' },
 }
 
-export default function GapsRail({ gaps }) {
-  const sorted = [...(gaps || [])].sort(
-    (a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99),
+function formatGapMarkdown(g) {
+  const lines = [
+    `**Question**: ${g.question}`,
+    '',
+    `**Severity**: ${g.severity}`,
+  ]
+  if (g.section) lines.push(`**Source**: ${g.section}`)
+  if (g.context) {
+    lines.push('')
+    lines.push(`**Context**: ${g.context}`)
+  }
+  return lines.join('\n')
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    // Fallback for older browsers
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+function ActionLink({ children, onClick, tone = 'accent' }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        padding: 0,
+        fontSize: 11.5,
+        color: tone === 'muted' ? 'var(--text-muted)' : 'var(--accent-strong)',
+        cursor: 'pointer',
+        fontWeight: 500,
+        fontFamily: 'inherit',
+      }}
+    >
+      {children}
+    </button>
   )
+}
+
+function ActionDot() {
+  return <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
+}
+
+function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen }) {
+  const meta = SEVERITY_META[gap.severity] || SEVERITY_META.low
+  const isResolved = !!state?.resolved
+  const wasAsked = !!state?.askedAt
+
+  return (
+    <Card
+      hover={!isResolved}
+      padding={14}
+      style={{
+        animation: `fade-in .25s ease-out ${Math.min(idx * 40, 400)}ms both`,
+        opacity: isResolved ? 0.65 : 1,
+      }}
+    >
+      {/* Header row: severity badge + section ref */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {isResolved ? (
+          <Badge tone="success" icon={<Check size={11} />} size="sm">
+            Resolved
+          </Badge>
+        ) : (
+          <Badge tone={meta.tone} icon={meta.icon} size="sm">
+            {meta.label}
+          </Badge>
+        )}
+        {wasAsked && !isResolved && (
+          <Badge tone="info" size="sm">
+            Asked
+          </Badge>
+        )}
+        <div style={{ flex: 1 }} />
+        {gap.section && (
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--text-soft)',
+            }}
+          >
+            {gap.section}
+          </span>
+        )}
+      </div>
+
+      {/* Question */}
+      <div
+        style={{
+          fontSize: 13.5,
+          fontWeight: 600,
+          color: 'var(--text-strong)',
+          marginBottom: 6,
+          lineHeight: 1.4,
+          textDecoration: isResolved ? 'line-through' : 'none',
+          textDecorationColor: 'var(--text-soft)',
+        }}
+      >
+        {gap.question}
+      </div>
+
+      {/* Context */}
+      {gap.context && (
+        <div
+          style={{
+            fontSize: 12,
+            color: 'var(--text-muted)',
+            lineHeight: 1.55,
+            marginBottom: 10,
+          }}
+        >
+          {gap.context}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {isResolved ? (
+          <ActionLink onClick={() => onReopen(idx)} tone="muted">
+            Reopen
+          </ActionLink>
+        ) : (
+          <>
+            <ActionLink onClick={() => onResolve(idx)}>Resolve</ActionLink>
+            <ActionDot />
+            <ActionLink onClick={() => onAsk(idx, gap)}>
+              {wasAsked ? 'Copy again' : 'Ask stakeholder'}
+            </ActionLink>
+            <ActionDot />
+            <ActionLink onClick={() => onIgnore(idx)} tone="muted">
+              Ignore
+            </ActionLink>
+          </>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+export default function GapsRail({ gaps = [], extractionId }) {
+  const { toast } = useToast()
+  const [states, setStates] = useState(() => getGapStates(extractionId))
+  const [showIgnored, setShowIgnored] = useState(false)
+
+  // Re-read on extraction change so each opened doc has its own gap states
+  useEffect(() => {
+    setStates(getGapStates(extractionId))
+    setShowIgnored(false)
+  }, [extractionId])
+
+  // Tag gaps with their original index so we never lose alignment as we sort
+  const indexed = useMemo(
+    () =>
+      gaps.map((g, idx) => ({
+        gap: g,
+        idx,
+        state: states[idx] || {},
+      })),
+    [gaps, states],
+  )
+
+  // Sort active by severity (resolved go to bottom of active list)
+  const active = indexed
+    .filter((x) => !x.state.ignored)
+    .sort((a, b) => {
+      // Unresolved first, then by severity
+      const ar = a.state.resolved ? 1 : 0
+      const br = b.state.resolved ? 1 : 0
+      if (ar !== br) return ar - br
+      return (SEVERITY_ORDER[a.gap.severity] ?? 99) - (SEVERITY_ORDER[b.gap.severity] ?? 99)
+    })
+
+  const ignored = indexed.filter((x) => x.state.ignored)
+  const resolvedCount = active.filter((x) => x.state.resolved).length
+  const openCount = active.length - resolvedCount
+
+  const update = (idx, patch) => {
+    setGapState(extractionId, idx, patch)
+    setStates(getGapStates(extractionId))
+  }
+
+  const onResolve = (idx) => {
+    update(idx, { resolved: true, ignored: false })
+    toast.success('Gap resolved')
+  }
+
+  const onReopen = (idx) => {
+    update(idx, { resolved: false })
+    toast.info('Gap reopened')
+  }
+
+  const onIgnore = (idx) => {
+    update(idx, { ignored: true, resolved: false })
+    toast.success('Gap ignored — moved to footer')
+  }
+
+  const onRestore = (idx) => {
+    update(idx, { ignored: false })
+  }
+
+  const onAsk = async (idx, gap) => {
+    const md = formatGapMarkdown(gap)
+    const ok = await copyToClipboard(md)
+    if (ok) {
+      update(idx, { askedAt: new Date().toISOString() })
+      toast.success('Stakeholder question copied to clipboard', { duration: 3000 })
+    } else {
+      toast.error('Could not copy — your browser blocked clipboard access')
+    }
+  }
 
   return (
     <aside
@@ -69,16 +290,47 @@ export default function GapsRail({ gaps }) {
             >
               Gaps & questions
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-soft)', marginTop: 2 }}>
-              {sorted.length} {sorted.length === 1 ? 'item' : 'items'} for stakeholders
+            <div
+              style={{
+                fontSize: 11.5,
+                color: 'var(--text-soft)',
+                marginTop: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span>
+                {openCount} open
+                {resolvedCount > 0 && (
+                  <>
+                    {' '}
+                    · <span style={{ color: 'var(--success-ink)' }}>{resolvedCount} resolved</span>
+                  </>
+                )}
+                {ignored.length > 0 && (
+                  <>
+                    {' '}· {ignored.length} ignored
+                  </>
+                )}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Body */}
-      <div style={{ padding: '14px 14px 30px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-        {sorted.length === 0 && (
+      <div
+        style={{
+          padding: '14px 14px 30px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          flex: 1,
+        }}
+      >
+        {gaps.length === 0 && (
           <Card
             padding={20}
             style={{
@@ -99,106 +351,81 @@ export default function GapsRail({ gaps }) {
           </Card>
         )}
 
-        {sorted.map((g, i) => {
-          const meta = SEVERITY_META[g.severity] || SEVERITY_META.low
-          return (
-            <Card
-              key={i}
-              hover
-              padding={14}
+        {/* Active gaps (open + resolved) */}
+        {active.map(({ gap, idx, state }, i) => (
+          <GapCard
+            key={`${extractionId || 'cur'}-${idx}`}
+            gap={gap}
+            idx={idx}
+            state={state}
+            onResolve={onResolve}
+            onIgnore={onIgnore}
+            onAsk={onAsk}
+            onReopen={onReopen}
+          />
+        ))}
+
+        {/* Ignored footer */}
+        {ignored.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setShowIgnored((s) => !s)}
               style={{
-                animation: `fade-in .3s ease-out ${Math.min(i * 60, 600)}ms both`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                width: '100%',
+                padding: '8px 10px',
+                background: 'transparent',
+                border: '1px dashed var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-muted)',
                 cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: 'inherit',
+                transition: 'border-color .12s, color .12s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-strong)'
+                e.currentTarget.style.color = 'var(--text)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border)'
+                e.currentTarget.style.color = 'var(--text-muted)'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Badge tone={meta.badge} icon={meta.icon} size="sm">
-                  {meta.label}
-                </Badge>
-                <div style={{ flex: 1 }} />
-                {g.section && (
-                  <span
+              {showIgnored ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              {ignored.length} ignored
+            </button>
+
+            {showIgnored && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                {ignored.map(({ gap, idx }) => (
+                  <div
+                    key={`ig-${idx}`}
                     style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 11,
-                      color: 'var(--text-soft)',
+                      padding: '8px 12px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--bg-elevated)',
+                      fontSize: 12,
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
                     }}
                   >
-                    {g.section}
-                  </span>
-                )}
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {gap.question}
+                    </span>
+                    <ActionLink onClick={() => onRestore(idx)}>Restore</ActionLink>
+                  </div>
+                ))}
               </div>
-              <div
-                style={{
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  color: 'var(--text-strong)',
-                  marginBottom: 6,
-                  lineHeight: 1.4,
-                }}
-              >
-                {g.question}
-              </div>
-              {g.context && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.55,
-                    marginBottom: 10,
-                  }}
-                >
-                  {g.context}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    fontSize: 11.5,
-                    color: 'var(--accent-strong)',
-                    cursor: 'pointer',
-                    fontWeight: 500,
-                  }}
-                >
-                  Resolve
-                </button>
-                <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
-                <button
-                  type="button"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    fontSize: 11.5,
-                    color: 'var(--accent-strong)',
-                    cursor: 'pointer',
-                    fontWeight: 500,
-                  }}
-                >
-                  Ask stakeholder
-                </button>
-                <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
-                <button
-                  type="button"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    fontSize: 11.5,
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Ignore
-                </button>
-              </div>
-            </Card>
-          )
-        })}
+            )}
+          </div>
+        )}
       </div>
     </aside>
   )

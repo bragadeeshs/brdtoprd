@@ -74,9 +74,10 @@ export function getExtraction(id) {
   return read().find((r) => r.id === id) || null
 }
 
-/** Remove one record by id. */
+/** Remove one record by id. Also clears any per-gap state for that record. */
 export function deleteExtraction(id) {
   write(read().filter((r) => r.id !== id))
+  clearGapStates(id)
 }
 
 /** Insert a record at a specific index, preserving its original id.
@@ -100,4 +101,49 @@ export function clearExtractions() {
 /** Storage budget signal for the Documents view header. */
 export function countExtractions() {
   return read().length
+}
+
+/* =========================================================================
+   Per-gap state (M1.6.1)
+   Stored under a separate key per extraction:
+     storyforge:gaps:<extractionId> -> { "0": {resolved, ignored, askedAt}, "1": ... }
+   ========================================================================= */
+
+const GAP_KEY = (extractionId) => `storyforge:gaps:${extractionId}`
+
+/** All gap states for an extraction, as a {gapIdx: state} map. */
+export function getGapStates(extractionId) {
+  if (!extractionId) return {}
+  try {
+    const raw = localStorage.getItem(GAP_KEY(extractionId))
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Merge a patch into one gap's state and write it back. Returns the new state. */
+export function setGapState(extractionId, gapIdx, patch) {
+  if (!extractionId || gapIdx == null) return null
+  const all = getGapStates(extractionId)
+  const next = { ...(all[gapIdx] || {}), ...patch }
+  all[gapIdx] = next
+  try {
+    localStorage.setItem(GAP_KEY(extractionId), JSON.stringify(all))
+  } catch {
+    /* swallow quota errors — gap state is tiny, this won't happen in practice */
+  }
+  return next
+}
+
+/** Remove all gap state for an extraction (used by deleteExtraction). */
+export function clearGapStates(extractionId) {
+  if (!extractionId) return
+  try {
+    localStorage.removeItem(GAP_KEY(extractionId))
+  } catch {
+    /* ignore */
+  }
 }

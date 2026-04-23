@@ -95,7 +95,7 @@ export default function Documents() {
   }, [records, query])
 
   const onOpen = (record) => {
-    restoreExtraction(record.payload)
+    restoreExtraction(record)
     navigate('/')
   }
 
