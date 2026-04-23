@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
 from docx import Document
 
+from db.session import init_db
 from extract import extract_requirements
 from models import ExtractionResult
 
@@ -24,7 +26,13 @@ SUPPORTED_EXT = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst"}
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("storyforge")
 
-app = FastAPI(title="StoryForge backend", version="0.2.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="StoryForge backend", version="0.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
