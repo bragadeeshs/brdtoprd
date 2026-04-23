@@ -109,6 +109,7 @@ async def extract(
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
+    x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
 ) -> ExtractionResult:
     if file is None and not text:
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
@@ -140,7 +141,12 @@ async def extract(
         raise HTTPException(status_code=422, detail="No readable text in the input.")
 
     try:
-        return extract_requirements(source_name, raw_text, api_key=x_anthropic_key)
+        return extract_requirements(
+            source_name,
+            raw_text,
+            api_key=x_anthropic_key,
+            model=x_storyforge_model,
+        )
 
     # Anthropic-specific errors get readable messages and accurate status codes
     except anthropic.AuthenticationError:

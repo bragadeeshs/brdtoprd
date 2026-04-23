@@ -11,7 +11,13 @@ from models import (
     UserStory,
 )
 
-MODEL = os.environ.get("STORYFORGE_MODEL", "claude-opus-4-7")
+DEFAULT_MODEL = "claude-opus-4-7"
+ALLOWED_MODELS = {
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+}
 
 EXTRACTION_SYSTEM = """You are a senior business analyst. Extract structured product requirements from messy source documents (BRDs, meeting notes, emails, transcripts).
 
@@ -115,12 +121,20 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
 
 
 def extract_requirements(
-    filename: str, raw_text: str, api_key: str | None = None
+    filename: str,
+    raw_text: str,
+    api_key: str | None = None,
+    model: str | None = None,
 ) -> ExtractionResult:
     # BYOK key (from request header) takes precedence over the server's env key
     effective_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not effective_key:
         return _mock(filename, raw_text)
+
+    # Model resolution order: per-request header → STORYFORGE_MODEL env → default.
+    # If a request supplies an unknown model id we let Anthropic reject it
+    # (becomes a BadRequestError surfaced as 400 to the user).
+    effective_model = model or os.environ.get("STORYFORGE_MODEL") or DEFAULT_MODEL
 
     client = anthropic.Anthropic(api_key=effective_key)
 
@@ -141,7 +155,7 @@ def extract_requirements(
     )
 
     response = client.messages.parse(
-        model=MODEL,
+        model=effective_model,
         max_tokens=16000,
         thinking={"type": "adaptive"},
         system=system_blocks,

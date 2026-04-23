@@ -1,9 +1,12 @@
 import { getSettings } from './lib/settings.js'
 
-/** Build per-request headers, picking up BYOK key from settings if present. */
+/** Build per-request headers from current settings (BYOK + model override). */
 function authHeaders() {
-  const { anthropicKey } = getSettings()
-  return anthropicKey ? { 'X-Anthropic-Key': anthropicKey } : {}
+  const { anthropicKey, model } = getSettings()
+  const h = {}
+  if (anthropicKey) h['X-Anthropic-Key'] = anthropicKey
+  if (model) h['X-Storyforge-Model'] = model
+  return h
 }
 
 async function readError(res) {

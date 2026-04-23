@@ -54,6 +54,144 @@ function Section({ icon, tone, title, description, comingIn, children }) {
   )
 }
 
+const MODEL_OPTIONS = [
+  {
+    id: '',
+    name: 'Server default',
+    description: 'Use whatever the server is configured with via STORYFORGE_MODEL.',
+    pricing: null,
+    badge: null,
+  },
+  {
+    id: 'claude-opus-4-7',
+    name: 'Claude Opus 4.7',
+    description: 'Most capable. Best for complex documents and high-stakes extraction.',
+    pricing: '$5 in / $25 out · per 1M tokens',
+    badge: { label: 'Best quality', tone: 'purple' },
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
+    description: 'Cost-quality sweet spot. Recommended for most workloads.',
+    pricing: '$3 in / $15 out · per 1M tokens',
+    badge: { label: 'Recommended', tone: 'success' },
+  },
+  {
+    id: 'claude-haiku-4-5',
+    name: 'Claude Haiku 4.5',
+    description: 'Fastest and cheapest. Good for short, simple docs.',
+    pricing: '$1 in / $5 out · per 1M tokens',
+    badge: { label: 'Fastest', tone: 'info' },
+  },
+]
+
+function ModelPicker() {
+  const { toast } = useToast()
+  const [selected, setSelected] = useState(() => getSettings().model)
+
+  const onSelect = (id) => {
+    if (id === selected) return
+    setSelected(id)
+    setSettings({ model: id })
+    const opt = MODEL_OPTIONS.find((o) => o.id === id)
+    toast.success(`Model set to ${opt.name}`)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {MODEL_OPTIONS.map((opt) => {
+        const isSelected = selected === opt.id
+        return (
+          <button
+            key={opt.id || 'default'}
+            type="button"
+            onClick={() => onSelect(opt.id)}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 12,
+              padding: 14,
+              border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius)',
+              background: isSelected ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'border-color .12s, background .12s, box-shadow .12s',
+              boxShadow: isSelected
+                ? '0 0 0 1px var(--accent), var(--shadow-xs)'
+                : 'var(--shadow-xs)',
+              fontFamily: 'inherit',
+              color: 'inherit',
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 999,
+                border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border-strong)'}`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginTop: 1,
+                background: 'var(--bg-elevated)',
+                transition: 'border-color .12s',
+              }}
+            >
+              {isSelected && (
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: 999,
+                    background: 'var(--accent)',
+                  }}
+                />
+              )}
+            </span>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                  {opt.name}
+                </span>
+                {opt.badge && (
+                  <Badge tone={opt.badge.tone} size="sm">
+                    {opt.badge.label}
+                  </Badge>
+                )}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--text-muted)',
+                  lineHeight: 1.5,
+                  marginBottom: opt.pricing ? 4 : 0,
+                }}
+              >
+                {opt.description}
+              </div>
+              {opt.pricing && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--text-soft)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {opt.pricing}
+                </div>
+              )}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function ApiKeyForm() {
   const { toast } = useToast()
   const [savedKey, setSavedKey] = useState(() => getSettings().anthropicKey)
@@ -269,9 +407,10 @@ export default function Settings() {
           icon={<Sparkles size={16} />}
           tone="purple"
           title="Model"
-          description="Choose which Claude model runs your extractions. Opus is most capable; Sonnet is the cost-quality sweet spot; Haiku is fastest."
-          comingIn="M1.4.4"
-        />
+          description="Choose which Claude model runs your extractions. Pricing is shown per million tokens of input / output."
+        >
+          <ModelPicker />
+        </Section>
         <Section
           icon={<Sun size={16} />}
           tone="warn"
