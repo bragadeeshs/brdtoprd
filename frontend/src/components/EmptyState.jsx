@@ -176,6 +176,8 @@ export default function EmptyState({ onSubmit, loading }) {
                 </div>
                 <button
                   type="button"
+                  aria-label="Remove file"
+                  title="Remove file"
                   onClick={(e) => {
                     e.stopPropagation()
                     setFile(null)

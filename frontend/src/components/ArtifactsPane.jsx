@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { copyToClipboard } from '../lib/clipboard.js'
+import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
 import {
   Sparkles,
@@ -12,6 +14,7 @@ import {
   Tag,
   Check,
   ChevronRight,
+  Copy,
   User,
 } from './icons.jsx'
 
@@ -45,17 +48,59 @@ function SectionHeader({ icon, tone, title, count, action }) {
   )
 }
 
-function StoryCard({ story, idx }) {
+function formatStoryMarkdown(s) {
+  const lines = [
+    `### ${s.id} — ${s.actor}`,
+    `**As a** ${s.actor} **I want** ${s.want} **so that** ${s.so_that}`,
+  ]
+  if (s.section) lines.push(`*Source: ${s.section}*`)
+  if (s.criteria?.length) {
+    lines.push('')
+    lines.push('**Acceptance criteria:**')
+    s.criteria.forEach((c) => lines.push(`- ${c}`))
+  }
+  return lines.join('\n')
+}
+
+function StoryCard({ story, idx, onCopy }) {
   return (
     <Card
       hover
       padding={16}
+      className="has-action"
       style={{
         animation: `fade-in .3s ease-out ${Math.min(idx * 60, 600)}ms both`,
+        position: 'relative',
       }}
     >
+      {/* Hover-revealed copy button */}
+      <button
+        type="button"
+        className="row-action"
+        aria-label={`Copy ${story.id} as markdown`}
+        title="Copy as markdown"
+        onClick={() => onCopy(story)}
+        style={{
+          position: 'absolute',
+          top: 12,
+          right: 12,
+          background: 'transparent',
+          border: 'none',
+          padding: 5,
+          borderRadius: 'var(--radius-sm)',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1,
+        }}
+      >
+        <Copy size={13} />
+      </button>
+
       {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, paddingRight: 28 }}>
         <Badge tone="accent" size="sm">
           {story.id}
         </Badge>
@@ -168,6 +213,13 @@ export default function ArtifactsPane({ extraction }) {
   const containerRef = useRef(null)
   const [activeTab, setActiveTab] = useState('brief')
   const userClickRef = useRef(false)
+  const { toast } = useToast()
+
+  const onCopyStory = async (story) => {
+    const ok = await copyToClipboard(formatStoryMarkdown(story))
+    if (ok) toast.success(`${story.id} copied as markdown`, { duration: 2500 })
+    else toast.error('Could not copy — your browser blocked clipboard access')
+  }
 
   // Re-derived per render — cheap, and makes the tab counts stay in sync.
   const counts = {
@@ -376,7 +428,7 @@ export default function ArtifactsPane({ extraction }) {
         {extraction.stories.length ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {extraction.stories.map((s, i) => (
-              <StoryCard key={s.id} story={s} idx={i} />
+              <StoryCard key={s.id} story={s} idx={i} onCopy={onCopyStory} />
             ))}
           </div>
         ) : (

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { getGapStates, setGapState } from '../lib/store.js'
+import { copyToClipboard } from '../lib/clipboard.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
 import {
@@ -9,8 +10,8 @@ import {
   CheckCircle,
   ChevronDown,
   ChevronRight,
+  Copy,
   HelpCircle,
-  MessageSquare,
 } from './icons.jsx'
 
 const SEVERITY_ORDER = { high: 0, med: 1, low: 2 }
@@ -33,28 +34,6 @@ function formatGapMarkdown(g) {
     lines.push(`**Context**: ${g.context}`)
   }
   return lines.join('\n')
-}
-
-async function copyToClipboard(text) {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    // Fallback for older browsers
-    try {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      ta.style.position = 'fixed'
-      ta.style.opacity = '0'
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
-      return true
-    } catch {
-      return false
-    }
-  }
 }
 
 function ActionLink({ children, onClick, tone = 'accent' }) {
@@ -82,7 +61,7 @@ function ActionDot() {
   return <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
 }
 
-function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen }) {
+function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy }) {
   const meta = SEVERITY_META[gap.severity] || SEVERITY_META.low
   const isResolved = !!state?.resolved
   const wasAsked = !!state?.askedAt
@@ -91,13 +70,41 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen }) {
     <Card
       hover={!isResolved}
       padding={14}
+      className="has-action"
       style={{
         animation: `fade-in .25s ease-out ${Math.min(idx * 40, 400)}ms both`,
         opacity: isResolved ? 0.65 : 1,
+        position: 'relative',
       }}
     >
+      {/* Floating copy button — hover-revealed via .has-action class */}
+      <button
+        type="button"
+        className="row-action"
+        aria-label="Copy gap as markdown"
+        title="Copy as markdown"
+        onClick={() => onCopy(gap)}
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          background: 'transparent',
+          border: 'none',
+          padding: 5,
+          borderRadius: 'var(--radius-sm)',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1,
+        }}
+      >
+        <Copy size={13} />
+      </button>
+
       {/* Header row: severity badge + section ref */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingRight: 28 }}>
         {isResolved ? (
           <Badge tone="success" icon={<Check size={11} />} size="sm">
             Resolved
@@ -179,15 +186,24 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen }) {
   )
 }
 
+const SEVERITY_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'high', label: 'High' },
+  { id: 'med', label: 'Medium' },
+  { id: 'low', label: 'Low' },
+]
+
 export default function GapsRail({ gaps = [], extractionId }) {
   const { toast } = useToast()
   const [states, setStates] = useState(() => getGapStates(extractionId))
   const [showIgnored, setShowIgnored] = useState(false)
+  const [filter, setFilter] = useState('all')
 
   // Re-read on extraction change so each opened doc has its own gap states
   useEffect(() => {
     setStates(getGapStates(extractionId))
     setShowIgnored(false)
+    setFilter('all')
   }, [extractionId])
 
   // Tag gaps with their original index so we never lose alignment as we sort
@@ -250,6 +266,15 @@ export default function GapsRail({ gaps = [], extractionId }) {
       toast.error('Could not copy — your browser blocked clipboard access')
     }
   }
+
+  const onCopy = async (gap) => {
+    const ok = await copyToClipboard(formatGapMarkdown(gap))
+    if (ok) toast.success('Gap copied as markdown', { duration: 2500 })
+    else toast.error('Could not copy — your browser blocked clipboard access')
+  }
+
+  // Apply severity filter to active list (ignored + footer untouched)
+  const filteredActive = active.filter((x) => filter === 'all' || x.gap.severity === filter)
 
   return (
     <aside
@@ -351,8 +376,61 @@ export default function GapsRail({ gaps = [], extractionId }) {
           </Card>
         )}
 
+        {/* Severity filter (only when there's something to filter) */}
+        {active.length > 1 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: 3,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-pill)',
+              marginBottom: 2,
+              boxShadow: 'var(--shadow-xs)',
+              alignSelf: 'flex-start',
+            }}
+          >
+            {SEVERITY_FILTERS.map((f) => {
+              const isOn = filter === f.id
+              const count = f.id === 'all' ? active.length : active.filter((x) => x.gap.severity === f.id).length
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFilter(f.id)}
+                  aria-current={isOn ? 'true' : undefined}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 'var(--radius-pill)',
+                    fontSize: 11.5,
+                    fontWeight: 500,
+                    color: isOn ? 'var(--text-strong)' : 'var(--text-muted)',
+                    background: isOn ? 'var(--bg-subtle)' : 'transparent',
+                    border: 'none',
+                    cursor: count === 0 ? 'not-allowed' : 'pointer',
+                    opacity: count === 0 && !isOn ? 0.4 : 1,
+                    fontFamily: 'inherit',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    transition: 'background .12s, color .12s',
+                  }}
+                  disabled={count === 0 && !isOn}
+                >
+                  {f.label}
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-soft)' }}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Active gaps (open + resolved) */}
-        {active.map(({ gap, idx, state }, i) => (
+        {filteredActive.map(({ gap, idx, state }) => (
           <GapCard
             key={`${extractionId || 'cur'}-${idx}`}
             gap={gap}
@@ -362,8 +440,23 @@ export default function GapsRail({ gaps = [], extractionId }) {
             onIgnore={onIgnore}
             onAsk={onAsk}
             onReopen={onReopen}
+            onCopy={onCopy}
           />
         ))}
+
+        {filteredActive.length === 0 && active.length > 0 && (
+          <div
+            style={{
+              padding: '20px 12px',
+              textAlign: 'center',
+              fontSize: 12,
+              color: 'var(--text-soft)',
+              fontStyle: 'italic',
+            }}
+          >
+            No {filter} gaps in this extraction.
+          </div>
+        )}
 
         {/* Ignored footer */}
         {ignored.length > 0 && (
