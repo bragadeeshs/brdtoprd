@@ -5,6 +5,7 @@ import { saveExtraction } from './lib/store.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import Documents from './pages/Documents.jsx'
+import Settings from './pages/Settings.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import EmptyState from './components/EmptyState.jsx'
@@ -12,39 +13,7 @@ import SourcePane from './components/SourcePane.jsx'
 import ArtifactsPane from './components/ArtifactsPane.jsx'
 import GapsRail from './components/GapsRail.jsx'
 import { Card, IconTile, Spinner } from './components/primitives.jsx'
-import { Sparkles, Check, Settings as SettingsIcon } from './components/icons.jsx'
-
-function PlaceholderPage({ icon, title, hint }) {
-  return (
-    <div
-      style={{
-        flex: 1,
-        display: 'grid',
-        placeItems: 'center',
-        padding: 40,
-        background: 'var(--bg)',
-      }}
-    >
-      <Card padding={32} style={{ maxWidth: 440, textAlign: 'center' }}>
-        <IconTile tone="accent" size={44} style={{ margin: '0 auto 14px' }}>
-          {icon}
-        </IconTile>
-        <div
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 20,
-            fontWeight: 600,
-            color: 'var(--text-strong)',
-            marginBottom: 6,
-          }}
-        >
-          {title}
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>{hint}</div>
-      </Card>
-    </div>
-  )
-}
+import { Sparkles, Check } from './components/icons.jsx'
 
 function LoadingState({ filename }) {
   const steps = [
@@ -239,16 +208,7 @@ export default function App() {
             }
           />
           <Route path="/documents" element={<Documents />} />
-          <Route
-            path="/settings"
-            element={
-              <PlaceholderPage
-                icon={<SettingsIcon size={20} />}
-                title="Settings"
-                hint="Coming in M1.4 — bring-your-own API key, model picker, theme."
-              />
-            }
-          />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
