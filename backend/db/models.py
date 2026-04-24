@@ -37,6 +37,9 @@ class Project(SQLModel, table=True):
     id: str = Field(primary_key=True)  # `proj_<base36-ts>_<rand6>`
     name: str = Field(index=True)
     created_at: datetime = Field(default_factory=_utcnow)
+    # M3.2 isolation. Existing pre-M3.2 rows retain user_id="local"; routes
+    # filter by current_user.user_id so a real user never sees orphan local data.
+    user_id: str = Field(default="local", index=True)
 
 
 class Extraction(SQLModel, table=True):
@@ -64,6 +67,9 @@ class Extraction(SQLModel, table=True):
     # chain — siblings don't link to each other — which keeps "list all
     # versions" a single query.
     root_id: str | None = Field(default=None, foreign_key="extraction.id", index=True)
+
+    # M3.2 isolation — see note on Project.user_id.
+    user_id: str = Field(default="local", index=True)
 
     created_at: datetime = Field(default_factory=_utcnow, index=True)
 

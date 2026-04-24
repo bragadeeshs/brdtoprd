@@ -134,7 +134,7 @@ def test_key(
 @app.post("/api/extract", response_model=ExtractionRecord)
 async def extract(
     session: Annotated[Session, Depends(get_session)],
-    _user: Annotated[CurrentUser, Depends(current_user)],
+    user: Annotated[CurrentUser, Depends(current_user)],
     file: UploadFile | None = File(default=None),
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
@@ -173,6 +173,14 @@ async def extract(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="No readable text in the input.")
 
+    # Validate project ownership BEFORE the LLM call — no point burning tokens
+    # if the request is going to fail validation anyway.
+    if project_id:
+        from db.models import Project as ProjectModel
+        proj = session.get(ProjectModel, project_id)
+        if proj is None or proj.user_id != user.user_id:
+            raise HTTPException(status_code=400, detail="Unknown project_id")
+
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
     result, model_used, usage = call_claude(
@@ -198,12 +206,14 @@ async def extract(
         session,
         result=result,
         model_used=model_used,
+        user_id=user.user_id,
         project_id=project_id or None,
         extraction_id=extraction_id,
         source_file_path=source_path,
     )
     record_usage(
         session,
+        user_id=user.user_id,
         extraction_id=row.id,
         action="extract",
         model=model_used,

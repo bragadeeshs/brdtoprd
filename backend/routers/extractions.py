@@ -1,4 +1,4 @@
-"""CRUD routes for stored extractions + per-gap state (M2.2)."""
+"""CRUD routes for stored extractions + per-gap state (M2.2 + M3.2 isolation)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
+from auth.deps import CurrentUser, current_user
 from db.models import Extraction, GapState, Project
 from db.session import get_session
 from models import (
@@ -41,6 +42,7 @@ log = logging.getLogger("storyforge.extractions")
 router = APIRouter(prefix="/api/extractions", tags=["extractions"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+UserDep = Annotated[CurrentUser, Depends(current_user)]
 
 # Markdown/RST aren't in the platform mimetypes db on every host. Register
 # explicitly so /source returns a stable content-type the browser can render.
@@ -49,12 +51,25 @@ mimetypes.add_type("text/markdown", ".markdown")
 mimetypes.add_type("text/x-rst", ".rst")
 
 
+def _owned_extraction(session: Session, extraction_id: str, user_id: str) -> Extraction:
+    """Fetch an extraction, asserting current-user ownership.
+
+    Returns 404 (not 403) on miss-or-foreign so we don't leak existence of
+    other users' rows.
+    """
+    row = session.get(Extraction, extraction_id)
+    if row is None or row.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Extraction not found")
+    return row
+
+
 # ---------------- list ----------------
 
 
 @router.get("", response_model=list[ExtractionSummary])
 def list_extractions(
     session: SessionDep,
+    user: UserDep,
     q: str | None = Query(default=None, description="Substring match on filename or brief.summary (case-insensitive)"),
     project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
@@ -67,7 +82,7 @@ def list_extractions(
     out — JSON-array LIKE in SQLite is fiddly; we'll add proper tag indexing
     if it shows up in usage.
     """
-    stmt = select(Extraction)
+    stmt = select(Extraction).where(Extraction.user_id == user.user_id)
     if project_id:
         stmt = stmt.where(Extraction.project_id == project_id)
     if q:
@@ -88,11 +103,8 @@ def list_extractions(
 
 
 @router.get("/{extraction_id}", response_model=ExtractionRecord)
-def get_extraction(extraction_id: str, session: SessionDep) -> ExtractionRecord:
-    row = session.get(Extraction, extraction_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Extraction not found")
-    return extraction_to_record(row)
+def get_extraction(extraction_id: str, session: SessionDep, user: UserDep) -> ExtractionRecord:
+    return extraction_to_record(_owned_extraction(session, extraction_id, user.user_id))
 
 
 # ---------------- patch ----------------
@@ -100,11 +112,9 @@ def get_extraction(extraction_id: str, session: SessionDep) -> ExtractionRecord:
 
 @router.patch("/{extraction_id}", response_model=ExtractionRecord)
 def patch_extraction(
-    extraction_id: str, patch: ExtractionPatch, session: SessionDep
+    extraction_id: str, patch: ExtractionPatch, session: SessionDep, user: UserDep
 ) -> ExtractionRecord:
-    row = session.get(Extraction, extraction_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Extraction not found")
+    row = _owned_extraction(session, extraction_id, user.user_id)
 
     if patch.filename is not None:
         name = patch.filename.strip()
@@ -113,11 +123,13 @@ def patch_extraction(
         row.filename = name
 
     if patch.project_id is not None:
-        # Empty string clears the link; non-empty must match an existing project.
+        # Empty string clears the link; non-empty must match an existing project
+        # owned by this user.
         if patch.project_id == "":
             row.project_id = None
         else:
-            if session.get(Project, patch.project_id) is None:
+            proj = session.get(Project, patch.project_id)
+            if proj is None or proj.user_id != user.user_id:
                 raise HTTPException(status_code=400, detail="Unknown project_id")
             row.project_id = patch.project_id
 
@@ -131,15 +143,14 @@ def patch_extraction(
 
 
 @router.get("/{extraction_id}/source")
-def get_source(extraction_id: str, session: SessionDep) -> FileResponse:
+def get_source(extraction_id: str, session: SessionDep, user: UserDep) -> FileResponse:
     """Stream the original uploaded file back with its inferred mimetype.
 
-    404 covers three real cases: row missing, paste-mode extraction (no upload),
-    or upload file deleted out from under us. We don't differentiate — the
-    user-facing answer is the same ("nothing to show").
+    404 covers four cases (missing row, foreign owner, paste-mode extraction,
+    file vanished) — same user-facing answer ("nothing to show").
     """
-    row = session.get(Extraction, extraction_id)
-    if row is None or not row.source_file_path:
+    row = _owned_extraction(session, extraction_id, user.user_id)
+    if not row.source_file_path:
         raise HTTPException(status_code=404, detail="No source file for this extraction")
     path = Path(row.source_file_path)
     if not path.exists():
@@ -157,8 +168,8 @@ def get_source(extraction_id: str, session: SessionDep) -> FileResponse:
 
 
 @router.delete("/{extraction_id}", status_code=204)
-def delete_one(extraction_id: str, session: SessionDep) -> None:
-    if not delete_extraction(session, extraction_id):
+def delete_one(extraction_id: str, session: SessionDep, user: UserDep) -> None:
+    if not delete_extraction(session, extraction_id, user_id=user.user_id):
         raise HTTPException(status_code=404, detail="Extraction not found")
     return None
 
@@ -167,9 +178,9 @@ def delete_one(extraction_id: str, session: SessionDep) -> None:
 
 
 @router.get("/{extraction_id}/versions", response_model=list[ExtractionVersion])
-def get_versions(extraction_id: str, session: SessionDep) -> list[ExtractionVersion]:
-    """All versions in the chain this id belongs to. 1-indexed, oldest first."""
-    versions = list_versions(session, extraction_id)
+def get_versions(extraction_id: str, session: SessionDep, user: UserDep) -> list[ExtractionVersion]:
+    """All versions in the chain this id belongs to that the user owns."""
+    versions = list_versions(session, extraction_id, user_id=user.user_id)
     if not versions:
         raise HTTPException(status_code=404, detail="Extraction not found")
     return versions
@@ -179,6 +190,7 @@ def get_versions(extraction_id: str, session: SessionDep) -> list[ExtractionVers
 def rerun_extraction(
     extraction_id: str,
     session: SessionDep,
+    user: UserDep,
     _payload: ExtractionRerunRequest | None = None,
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
     x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
@@ -190,9 +202,7 @@ def rerun_extraction(
     a different model and compare. `root_id` always points at the v1 (star
     topology), so a re-run of a re-run still rolls up to the same root.
     """
-    source = session.get(Extraction, extraction_id)
-    if source is None:
-        raise HTTPException(status_code=404, detail="Extraction not found")
+    source = _owned_extraction(session, extraction_id, user.user_id)
 
     result, model_used, usage = call_claude(
         filename=source.filename,
@@ -205,11 +215,13 @@ def rerun_extraction(
         session,
         result=result,
         model_used=model_used,
+        user_id=user.user_id,
         project_id=source.project_id,
         root_id=root_id_for(source),
     )
     record_usage(
         session,
+        user_id=user.user_id,
         extraction_id=row.id,
         action="rerun",
         model=model_used,
@@ -223,23 +235,27 @@ def rerun_extraction(
 
 
 @router.post("/import", response_model=ExtractionRecord, status_code=201)
-def import_extraction(payload: ExtractionImport, session: SessionDep) -> ExtractionRecord:
+def import_extraction(
+    payload: ExtractionImport, session: SessionDep, user: UserDep
+) -> ExtractionRecord:
     """Insert a record verbatim from a localStorage migration push.
 
-    Preserves the client's id and timestamp so the migration is idempotent —
-    a second push of the same record returns the existing row.
+    Idempotent on `id`: a second push of the same id returns the existing row,
+    *but only if it belongs to the current user*. Cross-user id collisions
+    return 409 — practically impossible (ids carry 6 random hex chars + ms
+    timestamp) but worth being explicit about.
     """
     existing = session.get(Extraction, payload.id)
     if existing is not None:
-        # Idempotent: already migrated, just return what we have.
+        if existing.user_id != user.user_id:
+            raise HTTPException(status_code=409, detail="Extraction id collision")
         return extraction_to_record(existing)
 
-    # Frontend records may not carry model_used; default to "imported" so we
-    # don't lie about provenance.
     row = persist_extraction(
         session,
         result=payload.payload,
         model_used="imported",
+        user_id=user.user_id,
         extraction_id=payload.id,
         created_at=payload.saved_at or datetime.now(timezone.utc),
     )
@@ -250,9 +266,8 @@ def import_extraction(payload: ExtractionImport, session: SessionDep) -> Extract
 
 
 @router.get("/{extraction_id}/gaps", response_model=list[GapStateRead])
-def list_gap_states(extraction_id: str, session: SessionDep) -> list[GapStateRead]:
-    if session.get(Extraction, extraction_id) is None:
-        raise HTTPException(status_code=404, detail="Extraction not found")
+def list_gap_states(extraction_id: str, session: SessionDep, user: UserDep) -> list[GapStateRead]:
+    _owned_extraction(session, extraction_id, user.user_id)  # 404 if foreign
     rows = session.exec(
         select(GapState).where(GapState.extraction_id == extraction_id)
     ).all()
@@ -261,11 +276,13 @@ def list_gap_states(extraction_id: str, session: SessionDep) -> list[GapStateRea
 
 @router.patch("/{extraction_id}/gaps/{gap_idx}", response_model=GapStateRead)
 def patch_gap_state(
-    extraction_id: str, gap_idx: int, patch: GapStatePatch, session: SessionDep
+    extraction_id: str,
+    gap_idx: int,
+    patch: GapStatePatch,
+    session: SessionDep,
+    user: UserDep,
 ) -> GapStateRead:
-    extraction = session.get(Extraction, extraction_id)
-    if extraction is None:
-        raise HTTPException(status_code=404, detail="Extraction not found")
+    extraction = _owned_extraction(session, extraction_id, user.user_id)
     if gap_idx < 0 or gap_idx >= len(extraction.gaps or []):
         raise HTTPException(status_code=400, detail="gap_idx out of range")
 

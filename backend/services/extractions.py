@@ -121,6 +121,7 @@ def persist_extraction(
     *,
     result: ExtractionResult,
     model_used: str,
+    user_id: str = "local",
     project_id: str | None = None,
     extraction_id: str | None = None,
     created_at: datetime | None = None,
@@ -134,6 +135,7 @@ def persist_extraction(
         raw_text=result.raw_text,
         model_used=model_used,
         live=result.live,
+        user_id=user_id,
         project_id=project_id,
         source_file_path=source_file_path,
         root_id=root_id,
@@ -162,19 +164,25 @@ def root_id_for(row: Extraction) -> str:
     return row.root_id or row.id
 
 
-def list_versions(session: Session, extraction_id: str) -> list[ExtractionVersion]:
-    """All versions of the doc this id belongs to, oldest first, 1-indexed.
+def list_versions(
+    session: Session, extraction_id: str, *, user_id: str
+) -> list[ExtractionVersion]:
+    """All versions of the doc this id belongs to that the user owns, oldest
+    first, 1-indexed.
 
-    Returns [] only if `extraction_id` doesn't exist — a lonely v1 still
-    returns a single-element list.
+    Returns [] when `extraction_id` doesn't exist OR when the anchor row
+    belongs to a different user — same response, no existence leak. The
+    same-user filter on the chain query is paranoia: in practice every row
+    in a chain has the same user_id, but defence in depth is cheap here.
     """
     anchor = session.get(Extraction, extraction_id)
-    if anchor is None:
+    if anchor is None or anchor.user_id != user_id:
         return []
     root = root_id_for(anchor)
     rows = session.exec(
         select(Extraction)
         .where((Extraction.id == root) | (Extraction.root_id == root))
+        .where(Extraction.user_id == user_id)
         .order_by(Extraction.created_at.asc())
     ).all()
     return [
@@ -189,13 +197,16 @@ def list_versions(session: Session, extraction_id: str) -> list[ExtractionVersio
     ]
 
 
-def delete_extraction(session: Session, extraction_id: str) -> bool:
+def delete_extraction(
+    session: Session, extraction_id: str, *, user_id: str
+) -> bool:
     """Delete extraction + cascade its gap states + remove uploaded source.
 
-    Returns True if it existed.
+    Returns True if the row existed AND belonged to `user_id` (404 vs 403 is
+    indistinguishable to keep ownership opaque).
     """
     row = session.get(Extraction, extraction_id)
-    if row is None:
+    if row is None or row.user_id != user_id:
         return False
     # Manually delete gap states — no SA cascade configured (kept the schema simple)
     states = session.exec(
@@ -321,7 +332,7 @@ def call_claude(
 def record_usage(
     session: Session,
     *,
-    user_id: str = "local",
+    user_id: str,
     extraction_id: str | None,
     action: str,
     model: str,
@@ -360,9 +371,14 @@ def project_to_read(row: Project, *, extraction_count: int = 0) -> ProjectRead:
     )
 
 
-def count_extractions_for_project(session: Session, project_id: str) -> int:
+def count_extractions_for_project(
+    session: Session, project_id: str, *, user_id: str
+) -> int:
+    """Count extractions in a project belonging to the given user."""
     return len(
         session.exec(
-            select(Extraction.id).where(Extraction.project_id == project_id)
+            select(Extraction.id)
+            .where(Extraction.project_id == project_id)
+            .where(Extraction.user_id == user_id)
         ).all()
     )

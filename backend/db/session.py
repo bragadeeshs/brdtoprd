@@ -48,14 +48,26 @@ def init_db() -> None:
 
 def _apply_soft_migrations() -> None:
     """Add columns SQLModel.metadata.create_all won't touch on existing tables."""
-    from sqlalchemy import text
-
     with engine.connect() as conn:
-        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(extraction)").fetchall()}
-        if "root_id" not in cols:
+        ext_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(extraction)").fetchall()}
+        if "root_id" not in ext_cols:
             log.info("migrating: adding extraction.root_id (M2.6)")
             conn.exec_driver_sql("ALTER TABLE extraction ADD COLUMN root_id VARCHAR")
             conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_extraction_root_id ON extraction (root_id)")
+            conn.commit()
+        if "user_id" not in ext_cols:
+            log.info("migrating: adding extraction.user_id (M3.2)")
+            # Default 'local' so existing rows match the pre-auth dev convention.
+            # NOT NULL because routes always join/filter on this column.
+            conn.exec_driver_sql("ALTER TABLE extraction ADD COLUMN user_id VARCHAR NOT NULL DEFAULT 'local'")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_extraction_user_id ON extraction (user_id)")
+            conn.commit()
+
+        proj_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(project)").fetchall()}
+        if "user_id" not in proj_cols:
+            log.info("migrating: adding project.user_id (M3.2)")
+            conn.exec_driver_sql("ALTER TABLE project ADD COLUMN user_id VARCHAR NOT NULL DEFAULT 'local'")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_project_user_id ON project (user_id)")
             conn.commit()
 
 
