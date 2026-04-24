@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { extract, listProjectsApi, rerunExtractionApi } from './api.js'
+import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react'
+import { extract, listProjectsApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -9,6 +10,8 @@ import { useToast } from './components/Toast.jsx'
 import Documents from './pages/Documents.jsx'
 import Project from './pages/Project.jsx'
 import Settings from './pages/Settings.jsx'
+import SignInPage from './pages/SignInPage.jsx'
+import SignUpPage from './pages/SignUpPage.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import EmptyState from './components/EmptyState.jsx'
@@ -133,7 +136,16 @@ function LoadingState({ filename }) {
   )
 }
 
-export default function App() {
+/** Inner app — only mounts once the user is signed in. */
+function AuthedApp() {
+  const { getToken } = useAuth()
+  // Wire api.js so every fetch carries Authorization: Bearer <jwt>.
+  // Re-runs whenever Clerk swaps the getToken closure (e.g. after sign-out/in).
+  useEffect(() => {
+    setTokenGetter(getToken)
+    return () => setTokenGetter(null)
+  }, [getToken])
+
   const [extraction, setExtraction] = useState(null)
   const [extractionId, setExtractionId] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -345,5 +357,34 @@ export default function App() {
       )}
     </div>
     </AppProvider>
+  )
+}
+
+
+/**
+ * Top-level router gate. /sign-in/* and /sign-up/* are always public.
+ * Everything else: signed-in users get the studio, signed-out users get
+ * redirected to /sign-in. The Clerk widgets handle redirect-back-to-app
+ * after success via the fallback URLs configured in main.jsx.
+ */
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/sign-in/*" element={<SignInPage />} />
+      <Route path="/sign-up/*" element={<SignUpPage />} />
+      <Route
+        path="*"
+        element={
+          <>
+            <SignedIn>
+              <AuthedApp />
+            </SignedIn>
+            <SignedOut>
+              <Navigate to="/sign-in" replace />
+            </SignedOut>
+          </>
+        }
+      />
+    </Routes>
   )
 }

@@ -18,6 +18,7 @@ from pypdf import PdfReader
 from docx import Document
 from sqlmodel import Session
 
+from auth.deps import CurrentUser, current_user
 from db.session import get_session, init_db
 from models import ExtractionRecord
 from routers import extractions as extractions_router
@@ -53,8 +54,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(extractions_router.router)
-app.include_router(projects_router.router)
+# Router-level auth: every route under /api/extractions and /api/projects
+# requires a verified Clerk session. /api/health stays public for infra probes.
+app.include_router(extractions_router.router, dependencies=[Depends(current_user)])
+app.include_router(projects_router.router, dependencies=[Depends(current_user)])
 
 
 def _parse_pdf(data: bytes) -> str:
@@ -97,7 +100,10 @@ def health():
 
 
 @app.post("/api/test-key")
-def test_key(x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key")):
+def test_key(
+    _user: Annotated[CurrentUser, Depends(current_user)],
+    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
+):
     """Validate an Anthropic API key by making a tiny authenticated call.
 
     Used by the Settings page "Test connection" button. Falls back to the
@@ -128,6 +134,7 @@ def test_key(x_anthropic_key: str | None = Header(default=None, alias="X-Anthrop
 @app.post("/api/extract", response_model=ExtractionRecord)
 async def extract(
     session: Annotated[Session, Depends(get_session)],
+    _user: Annotated[CurrentUser, Depends(current_user)],
     file: UploadFile | None = File(default=None),
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),

@@ -1,12 +1,38 @@
 import { getSettings } from './lib/settings.js'
 
-/** Build per-request headers from current settings (BYOK + model override). */
-function authHeaders() {
-  const { anthropicKey, model } = getSettings()
+/* ------------------------------------------------------------------ */
+/* Token getter — App.jsx populates this on mount via useAuth().getToken.
+   Stashed at module scope so the existing api.* functions stay
+   sync-callable. Default returns null so calls before mount don't crash. */
+let _tokenGetter = async () => null
+
+export function setTokenGetter(fn) {
+  _tokenGetter = fn || (async () => null)
+}
+/* ------------------------------------------------------------------ */
+
+/** Build per-request headers: Clerk Bearer + BYOK + model override. */
+async function authHeaders() {
   const h = {}
+  try {
+    const token = await _tokenGetter()
+    if (token) h['Authorization'] = `Bearer ${token}`
+  } catch {
+    /* getToken can throw on session expiry; let the request proceed and 401 */
+  }
+  const { anthropicKey, model } = getSettings()
   if (anthropicKey) h['X-Anthropic-Key'] = anthropicKey
   if (model) h['X-Storyforge-Model'] = model
   return h
+}
+
+/**
+ * Wrapper around fetch that always attaches auth headers.
+ * Call sites pass `headers` for content-type or extras; auth is merged in.
+ */
+async function apiFetch(path, { headers, ...rest } = {}) {
+  const auth = await authHeaders()
+  return fetch(path, { ...rest, headers: { ...auth, ...(headers || {}) } })
 }
 
 async function readError(res) {
@@ -41,11 +67,7 @@ export async function extract({ file, text, filename, projectId } = {}) {
   if (filename) form.append('filename', filename)
   if (projectId) form.append('project_id', projectId)
 
-  const res = await fetch('/api/extract', {
-    method: 'POST',
-    body: form,
-    headers: authHeaders(),
-  })
+  const res = await apiFetch('/api/extract', { method: 'POST', body: form })
   return jsonOrThrow(res)
 }
 
@@ -57,25 +79,25 @@ export async function listExtractionsApi({ q, projectId, limit, offset } = {}) {
   if (limit != null) params.set('limit', String(limit))
   if (offset != null) params.set('offset', String(offset))
   const qs = params.toString()
-  const res = await fetch(`/api/extractions${qs ? `?${qs}` : ''}`)
+  const res = await apiFetch(`/api/extractions${qs ? `?${qs}` : ''}`)
   return jsonOrThrow(res)
 }
 
 /** Full record by id. Throws on 404. */
 export async function getExtractionApi(id) {
-  const res = await fetch(`/api/extractions/${encodeURIComponent(id)}`)
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}`)
   return jsonOrThrow(res)
 }
 
 /** Delete one. Resolves on 204. */
 export async function deleteExtractionApi(id) {
-  const res = await fetch(`/api/extractions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}`, { method: 'DELETE' })
   return jsonOrThrow(res)
 }
 
 /** Partial update (filename, project_id). */
 export async function patchExtractionApi(id, patch) {
-  const res = await fetch(`/api/extractions/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -85,7 +107,7 @@ export async function patchExtractionApi(id, patch) {
 
 /** Bulk-import a localStorage record. Idempotent on the same id. */
 export async function importExtractionApi(record) {
-  const res = await fetch('/api/extractions/import', {
+  const res = await apiFetch('/api/extractions/import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(record),
@@ -95,9 +117,9 @@ export async function importExtractionApi(record) {
 
 /** Re-run extraction on the same source. Uses current header model + key. */
 export async function rerunExtractionApi(id) {
-  const res = await fetch(`/api/extractions/${encodeURIComponent(id)}/rerun`, {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/rerun`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json' },
     body: '{}',
   })
   return jsonOrThrow(res)
@@ -105,23 +127,21 @@ export async function rerunExtractionApi(id) {
 
 /** All versions in this extraction's chain. Oldest first, 1-indexed. */
 export async function listVersionsApi(id) {
-  const res = await fetch(`/api/extractions/${encodeURIComponent(id)}/versions`)
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/versions`)
   return jsonOrThrow(res)
 }
 
 // ---------- gap state ----------
 
-/** All gap states for an extraction (only persisted ones — others default to {}). */
 export async function listGapStatesApi(extractionId) {
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/extractions/${encodeURIComponent(extractionId)}/gaps`,
   )
   return jsonOrThrow(res)
 }
 
-/** Upsert one gap's state (resolved/ignored/asked_at). */
 export async function patchGapStateApi(extractionId, gapIdx, patch) {
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/extractions/${encodeURIComponent(extractionId)}/gaps/${gapIdx}`,
     {
       method: 'PATCH',
@@ -135,12 +155,12 @@ export async function patchGapStateApi(extractionId, gapIdx, patch) {
 // ---------- projects ----------
 
 export async function listProjectsApi() {
-  const res = await fetch('/api/projects')
+  const res = await apiFetch('/api/projects')
   return jsonOrThrow(res)
 }
 
 export async function createProjectApi(name) {
-  const res = await fetch('/api/projects', {
+  const res = await apiFetch('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -149,7 +169,7 @@ export async function createProjectApi(name) {
 }
 
 export async function patchProjectApi(id, patch) {
-  const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -158,12 +178,13 @@ export async function patchProjectApi(id, patch) {
 }
 
 export async function deleteProjectApi(id) {
-  const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
   return jsonOrThrow(res)
 }
 
 // ---------- health + key test ----------
 
+/** Health endpoint is unauth-protected; skip the auth header to avoid noise. */
 export async function health() {
   const res = await fetch('/api/health')
   if (!res.ok) throw new Error(`Health check failed: ${res.status}`)
@@ -172,7 +193,7 @@ export async function health() {
 
 /** Validate an arbitrary key by hitting /api/test-key. Throws on failure. */
 export async function testApiKey(key) {
-  const res = await fetch('/api/test-key', {
+  const res = await apiFetch('/api/test-key', {
     method: 'POST',
     headers: key ? { 'X-Anthropic-Key': key } : {},
   })

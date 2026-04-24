@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { UserButton, useUser } from '@clerk/clerk-react'
 import { createProjectApi } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from './Toast.jsx'
 import { IconButton } from './primitives.jsx'
 import {
-  ChevronDown,
   Edit,
   FileText,
   FolderClosed,
@@ -13,7 +13,6 @@ import {
   Plus,
   Search,
   Settings,
-  User,
   X,
 } from './icons.jsx'
 
@@ -214,55 +213,63 @@ export default function Sidebar({ onNew }) {
         </div>
       </div>
 
-      {/* Footer: user pill */}
-      <div
-        style={{
-          padding: '12px 14px',
-          borderTop: '1px solid var(--border)',
-          background: 'var(--bg-subtle)',
-        }}
-      >
+      {/* Footer: user pill (Clerk) */}
+      <UserPill />
+    </aside>
+  )
+}
+
+/** Footer pill backed by Clerk's useUser + UserButton (avatar + dropdown). */
+function UserPill() {
+  const { user, isLoaded } = useUser()
+  const displayName = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || 'Account'
+  const subline = user?.primaryEmailAddress?.emailAddress &&
+    user.primaryEmailAddress.emailAddress !== displayName
+    ? user.primaryEmailAddress.emailAddress
+    : 'Free trial'
+
+  return (
+    <div
+      style={{
+        padding: '10px 14px',
+        borderTop: '1px solid var(--border)',
+        background: 'var(--bg-subtle)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+      }}
+    >
+      {/* Clerk's UserButton renders a 28px avatar that opens a manage-account
+          + sign-out dropdown. afterSignOutUrl bounces back to /sign-in. */}
+      <UserButton
+        afterSignOutUrl="/sign-in"
+        appearance={{ elements: { avatarBox: { width: 28, height: 28 } } }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '6px 0',
+            fontSize: 12.5,
+            fontWeight: 500,
+            color: 'var(--text-strong)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
-          <span
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 999,
-              background: 'var(--accent-soft)',
-              color: 'var(--accent-ink)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <User size={14} />
-          </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 12.5,
-                fontWeight: 500,
-                color: 'var(--text-strong)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Bragadeesh
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-soft)' }}>Free Trial</div>
-          </div>
-          <ChevronDown size={14} />
+          {isLoaded ? displayName : '…'}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: 'var(--text-soft)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {isLoaded ? subline : ''}
         </div>
       </div>
-    </aside>
+    </div>
   )
 }
