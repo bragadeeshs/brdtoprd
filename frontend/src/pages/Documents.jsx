@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { patchExtractionApi } from '../api.js'
 import {
@@ -306,37 +306,39 @@ export default function Documents() {
   const { toast } = useToast()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
   const [menuFor, setMenuFor] = useState(null)
+  const initialLoadRef = useRef(true)
 
-  const refresh = async () => {
-    setLoading(true)
+  // Run a fresh fetch with the current query. Used by Retry + the undo flow.
+  const refresh = async (q = query) => {
     setError(null)
+    if (initialLoadRef.current) setLoading(true)
+    else setSearching(true)
     try {
-      const rows = await listExtractions()
+      const rows = await listExtractions({ q: q.trim() || undefined })
       setRecords(rows)
     } catch (e) {
       setError(e.message || 'Failed to load')
     } finally {
       setLoading(false)
+      setSearching(false)
+      initialLoadRef.current = false
     }
   }
 
+  // Debounced search: re-query the backend 200 ms after the user stops typing.
+  // Same effect handles initial load (query starts empty).
   useEffect(() => {
-    refresh()
-  }, [])
+    const t = setTimeout(() => { refresh(query) }, 200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query])
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return records
-    return records.filter((r) => {
-      const fname = (r.filename || '').toLowerCase()
-      const summary = (r.brief_summary || '').toLowerCase()
-      const tags = (r.brief_tags || []).map((t) => String(t).toLowerCase())
-      return fname.includes(q) || summary.includes(q) || tags.some((t) => t.includes(q))
-    })
-  }, [records, query])
+  // After backend filtering, `records` IS the displayed list — no client filter.
+  const filtered = records
 
   const onOpen = (record) => {
     // App handles the async hydration AND the navigate to '/'.
@@ -429,7 +431,9 @@ export default function Documents() {
     return <ErrorState error={error} onRetry={refresh} />
   }
 
-  if (records.length === 0) {
+  // Only show the "no docs yet" hero when the store really is empty (no query).
+  // An empty result during a search falls through to the inline no-matches state.
+  if (records.length === 0 && !query) {
     return <EmptyState onNew={() => navigate('/')} />
   }
 
@@ -450,8 +454,9 @@ export default function Documents() {
           Documents
         </h1>
         <Badge tone="neutral">
-          {query ? `${filtered.length} of ${records.length}` : records.length}
+          {query ? `${records.length} match${records.length === 1 ? '' : 'es'}` : records.length}
         </Badge>
+        {searching && <Spinner size={14} />}
         <div style={{ flex: 1 }} />
         <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => navigate('/')}>
           New extraction

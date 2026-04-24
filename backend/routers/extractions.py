@@ -10,6 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from db.models import Extraction, GapState, Project
@@ -53,17 +54,30 @@ mimetypes.add_type("text/x-rst", ".rst")
 @router.get("", response_model=list[ExtractionSummary])
 def list_extractions(
     session: SessionDep,
-    q: str | None = Query(default=None, description="Substring filter on filename"),
+    q: str | None = Query(default=None, description="Substring match on filename or brief.summary (case-insensitive)"),
     project_id: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[ExtractionSummary]:
-    """List extractions, newest first. Lightweight rows for the Documents view."""
+    """List extractions, newest first. Lightweight rows for the Documents view.
+
+    Search is case-insensitive substring across filename + the brief's summary
+    (extracted via SQLite's `json_extract`). Tag search is intentionally left
+    out — JSON-array LIKE in SQLite is fiddly; we'll add proper tag indexing
+    if it shows up in usage.
+    """
     stmt = select(Extraction)
     if project_id:
         stmt = stmt.where(Extraction.project_id == project_id)
     if q:
-        stmt = stmt.where(Extraction.filename.contains(q))
+        needle = f"%{q.strip().lower()}%"
+        summary_expr = func.json_extract(Extraction.brief, "$.summary")
+        stmt = stmt.where(
+            or_(
+                func.lower(Extraction.filename).like(needle),
+                func.lower(summary_expr).like(needle),
+            )
+        )
     stmt = stmt.order_by(Extraction.created_at.desc()).offset(offset).limit(limit)
     rows = session.exec(stmt).all()
     return [extraction_to_summary(r) for r in rows]
