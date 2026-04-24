@@ -3,6 +3,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
 from dotenv import load_dotenv
 
@@ -10,15 +11,19 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 import anthropic
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
 from docx import Document
+from sqlmodel import Session
 
-from db.session import init_db
-from extract import extract_requirements
-from models import ExtractionResult
+from db.session import get_session, init_db
+from extract import extract_requirements, resolve_model
+from models import ExtractionRecord
+from routers import extractions as extractions_router
+from routers import projects as projects_router
+from services.extractions import extraction_to_record, persist_extraction
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 SUPPORTED_EXT = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst"}
@@ -41,6 +46,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(extractions_router.router)
+app.include_router(projects_router.router)
 
 
 def _parse_pdf(data: bytes) -> str:
@@ -111,14 +119,16 @@ def test_key(x_anthropic_key: str | None = Header(default=None, alias="X-Anthrop
         raise HTTPException(status_code=500, detail=f"Test failed: {e}")
 
 
-@app.post("/api/extract", response_model=ExtractionResult)
+@app.post("/api/extract", response_model=ExtractionRecord)
 async def extract(
+    session: Annotated[Session, Depends(get_session)],
     file: UploadFile | None = File(default=None),
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
+    project_id: str | None = Form(default=None),
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
     x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
-) -> ExtractionResult:
+) -> ExtractionRecord:
     if file is None and not text:
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
 
@@ -149,12 +159,22 @@ async def extract(
         raise HTTPException(status_code=422, detail="No readable text in the input.")
 
     try:
-        return extract_requirements(
+        result = extract_requirements(
             source_name,
             raw_text,
             api_key=x_anthropic_key,
             model=x_storyforge_model,
         )
+        # Persist immediately so the frontend never has to repeat the LLM call.
+        # `model_used` records what we actually called — "mock" when no key was set.
+        model_used = resolve_model(x_storyforge_model) if result.live else "mock"
+        row = persist_extraction(
+            session,
+            result=result,
+            model_used=model_used,
+            project_id=project_id or None,
+        )
+        return extraction_to_record(row)
 
     # Anthropic-specific errors get readable messages and accurate status codes
     except anthropic.AuthenticationError:

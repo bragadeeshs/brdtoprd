@@ -195,15 +195,23 @@ const SEVERITY_FILTERS = [
 
 export default function GapsRail({ gaps = [], extractionId }) {
   const { toast } = useToast()
-  const [states, setStates] = useState(() => getGapStates(extractionId))
+  const [states, setStates] = useState({})
   const [showIgnored, setShowIgnored] = useState(false)
   const [filter, setFilter] = useState('all')
 
-  // Re-read on extraction change so each opened doc has its own gap states
+  // Re-fetch on extraction change so each opened doc has its own gap states.
+  // Guarded by an alive flag to avoid setting state from a stale request after
+  // the user clicked into another extraction mid-flight.
   useEffect(() => {
-    setStates(getGapStates(extractionId))
+    let alive = true
+    setStates({})
     setShowIgnored(false)
     setFilter('all')
+    if (!extractionId) return
+    getGapStates(extractionId)
+      .then((next) => { if (alive) setStates(next) })
+      .catch(() => { /* leave empty; user can still resolve/ignore */ })
+    return () => { alive = false }
   }, [extractionId])
 
   // Tag gaps with their original index so we never lose alignment as we sort
@@ -232,9 +240,20 @@ export default function GapsRail({ gaps = [], extractionId }) {
   const resolvedCount = active.filter((x) => x.state.resolved).length
   const openCount = active.length - resolvedCount
 
+  // Optimistic update — write to local state, then persist. Revert on failure.
   const update = (idx, patch) => {
+    if (!extractionId) return
+    const prev = states[idx] || {}
+    const optimistic = { ...prev, ...patch }
+    setStates((s) => ({ ...s, [idx]: optimistic }))
     setGapState(extractionId, idx, patch)
-    setStates(getGapStates(extractionId))
+      .then((settled) => {
+        if (settled) setStates((s) => ({ ...s, [idx]: settled }))
+      })
+      .catch((e) => {
+        setStates((s) => ({ ...s, [idx]: prev }))
+        toast.error(e.message || 'Could not save change')
+      })
   }
 
   const onResolve = (idx) => {

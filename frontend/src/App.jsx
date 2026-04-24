@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { extract } from './api.js'
-import { saveExtraction } from './lib/store.js'
+import { getExtraction } from './lib/store.js'
+import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
@@ -170,13 +171,26 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange)
   }, [theme])
 
+  // One-shot migration of any leftover localStorage records to the backend.
+  // Runs on first mount; the helper marks itself done so reruns are no-ops.
+  useEffect(() => {
+    migrateLocalStorageOnce().then((res) => {
+      if (res.migrated > 0) {
+        toast.success(`Migrated ${res.migrated} document${res.migrated === 1 ? '' : 's'} to the new store`)
+      }
+      if (res.failed > 0) {
+        toast.warn(`${res.failed} document${res.failed === 1 ? '' : 's'} failed to migrate — they remain in local storage`)
+      }
+    }).catch((e) => console.warn('migration failed', e))
+  }, [])
+
   const handleExtract = async ({ file, text, filename }) => {
     setLoading(true)
     setPendingName(file ? file.name : filename)
     try {
-      const result = await extract({ file, text, filename })
-      const record = saveExtraction(result)
-      setExtraction(result)
+      // Backend persists and returns the full record (with id + provenance).
+      const record = await extract({ file, text, filename })
+      setExtraction(record)
       setExtractionId(record?.id || null)
       // Ensure the result view is visible no matter where the extraction was triggered from
       if (location.pathname !== '/') navigate('/')
@@ -194,11 +208,28 @@ export default function App() {
     if (!isHome) navigate('/')
   }
 
-  // Now takes the full record so we can track the id (needed by gap-state)
-  const restoreExtraction = (record) => {
-    setExtraction(record.payload)
-    setExtractionId(record.id)
-    if (!isHome) navigate('/')
+  // Documents page passes a summary row; hydrate the full record from the API
+  // before opening the studio so brief/actors/stories/nfrs/gaps are present.
+  const restoreExtraction = async (rowOrRecord) => {
+    // If it's already a full record (has stories), open immediately.
+    if (rowOrRecord && Array.isArray(rowOrRecord.stories)) {
+      setExtraction(rowOrRecord)
+      setExtractionId(rowOrRecord.id)
+      if (!isHome) navigate('/')
+      return
+    }
+    try {
+      const full = await getExtraction(rowOrRecord.id)
+      if (!full) {
+        toast.error('That document is no longer available')
+        return
+      }
+      setExtraction(full)
+      setExtractionId(full.id)
+      if (!isHome) navigate('/')
+    } catch (e) {
+      toast.error(e.message || 'Could not open document')
+    }
   }
 
   const appCtx = { restoreExtraction, reset, theme, setTheme }

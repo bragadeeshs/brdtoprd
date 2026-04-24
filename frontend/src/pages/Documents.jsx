@@ -1,13 +1,29 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { deleteExtraction, insertExtraction, listExtractions } from '../lib/store.js'
+import {
+  deleteExtraction,
+  getExtraction,
+  insertExtraction,
+  listExtractions,
+} from '../lib/store.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
-import { Badge, Button, Card, IconTile } from '../components/primitives.jsx'
-import { AlertTriangle, FileText, Plus, Search, Sparkles, Trash, Users, X } from '../components/icons.jsx'
+import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
+import {
+  AlertTriangle,
+  FileText,
+  Plus,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Trash,
+  Users,
+  X,
+} from '../components/icons.jsx'
 
 /** Format an ISO timestamp as a human-friendly relative string. */
 function timeAgo(iso) {
+  if (!iso) return ''
   const t = new Date(iso).getTime()
   const diff = Date.now() - t
   const mins = Math.floor(diff / 60000)
@@ -76,46 +92,193 @@ function EmptyState({ onNew }) {
   )
 }
 
+/** Skeleton row used while the initial list is loading. */
+function SkeletonRow({ delay = 0 }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        padding: 14,
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        background: 'var(--bg-elevated)',
+        animation: `fade-in .25s ease-out ${delay}ms both`,
+      }}
+    >
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--bg-hover)',
+        }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            height: 12,
+            width: '40%',
+            background: 'var(--bg-hover)',
+            borderRadius: 4,
+            marginBottom: 8,
+          }}
+        />
+        <div
+          style={{
+            height: 10,
+            width: '60%',
+            background: 'var(--bg-hover)',
+            borderRadius: 4,
+            opacity: 0.7,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ErrorState({ error, onRetry }) {
+  return (
+    <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 40, background: 'var(--bg)' }}>
+      <Card padding={32} style={{ maxWidth: 460, textAlign: 'center' }}>
+        <IconTile tone="danger" size={44} style={{ margin: '0 auto 14px' }}>
+          <AlertTriangle size={20} />
+        </IconTile>
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 18,
+            fontWeight: 600,
+            color: 'var(--text-strong)',
+            marginBottom: 6,
+          }}
+        >
+          Couldn't load documents
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: 'var(--text-muted)',
+            lineHeight: 1.6,
+            marginBottom: 20,
+          }}
+        >
+          {error}
+        </div>
+        <Button variant="primary" icon={<RefreshCw size={13} />} onClick={onRetry}>
+          Retry
+        </Button>
+      </Card>
+    </div>
+  )
+}
+
 export default function Documents() {
   const navigate = useNavigate()
   const { restoreExtraction } = useApp()
   const { toast } = useToast()
-  const [records, setRecords] = useState(() => listExtractions())
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
+
+  const refresh = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const rows = await listExtractions()
+      setRecords(rows)
+    } catch (e) {
+      setError(e.message || 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return records
     return records.filter((r) => {
       const fname = (r.filename || '').toLowerCase()
-      const summary = (r.payload?.brief?.summary || '').toLowerCase()
-      const tags = (r.payload?.brief?.tags || []).map((t) => String(t).toLowerCase())
+      const summary = (r.brief_summary || '').toLowerCase()
+      const tags = (r.brief_tags || []).map((t) => String(t).toLowerCase())
       return fname.includes(q) || summary.includes(q) || tags.some((t) => t.includes(q))
     })
   }, [records, query])
 
   const onOpen = (record) => {
+    // App handles the async hydration AND the navigate to '/'.
     restoreExtraction(record)
-    navigate('/')
   }
 
-  const onDelete = (record, e) => {
+  const onDelete = async (record, e) => {
     e.stopPropagation()
-    // Compute idx in the FULL list (records), not the filtered list,
-    // so undo restores at the original position.
-    const originalIdx = records.findIndex((r) => r.id === record.id)
-    deleteExtraction(record.id)
-    setRecords(listExtractions())
+    // Capture the full record BEFORE delete so undo can re-import it.
+    let full
+    try {
+      full = await getExtraction(record.id)
+    } catch (err) {
+      toast.error(err.message || 'Could not fetch document for delete')
+      return
+    }
+    try {
+      await deleteExtraction(record.id)
+    } catch (err) {
+      toast.error(err.message || 'Delete failed')
+      return
+    }
+    setRecords((rs) => rs.filter((r) => r.id !== record.id))
     toast.success(`Deleted "${record.filename}"`, {
       duration: 5000,
       action: {
         label: 'Undo',
-        onClick: () => {
-          insertExtraction(record, originalIdx >= 0 ? originalIdx : 0)
-          setRecords(listExtractions())
+        onClick: async () => {
+          try {
+            await insertExtraction(full)
+            await refresh()
+          } catch (err) {
+            toast.error(err.message || 'Undo failed')
+          }
         },
       },
     })
+  }
+
+  if (loading) {
+    return (
+      <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 24,
+              fontWeight: 600,
+              color: 'var(--text-strong)',
+              margin: 0,
+              letterSpacing: -0.3,
+            }}
+          >
+            Documents
+          </h1>
+          <Spinner size={16} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <SkeletonRow key={i} delay={i * 60} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return <ErrorState error={error} onRetry={refresh} />
   }
 
   if (records.length === 0) {
@@ -247,10 +410,10 @@ export default function Documents() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.map((r, i) => {
-          const stories = r.payload?.stories?.length ?? 0
-          const gaps = r.payload?.gaps?.length ?? 0
-          const actors = r.payload?.actors?.length ?? 0
-          const isLive = r.payload?.live
+          const stories = r.story_count ?? 0
+          const gaps = r.gap_count ?? 0
+          const actors = r.actor_count ?? 0
+          const isLive = r.live
           return (
             <Card
               key={r.id}
@@ -294,7 +457,7 @@ export default function Documents() {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <span>{timeAgo(r.savedAt)}</span>
+                  <span>{timeAgo(r.created_at)}</span>
                   <span style={{ color: 'var(--text-soft)' }}>·</span>
                   <MetaItem
                     icon={<Users size={12} />}

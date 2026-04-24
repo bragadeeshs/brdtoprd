@@ -120,6 +120,15 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
     )
 
 
+def resolve_model(model: str | None) -> str:
+    """Per-request header → `STORYFORGE_MODEL` env → built-in default.
+
+    Exposed so callers (and routes that persist provenance) see the same
+    answer the LLM call uses. Unknown ids are surfaced as Anthropic 400s.
+    """
+    return model or os.environ.get("STORYFORGE_MODEL") or DEFAULT_MODEL
+
+
 def extract_requirements(
     filename: str,
     raw_text: str,
@@ -131,10 +140,7 @@ def extract_requirements(
     if not effective_key:
         return _mock(filename, raw_text)
 
-    # Model resolution order: per-request header → STORYFORGE_MODEL env → default.
-    # If a request supplies an unknown model id we let Anthropic reject it
-    # (becomes a BadRequestError surfaced as 400 to the user).
-    effective_model = model or os.environ.get("STORYFORGE_MODEL") or DEFAULT_MODEL
+    effective_model = resolve_model(model)
 
     client = anthropic.Anthropic(api_key=effective_key)
 

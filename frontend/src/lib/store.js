@@ -1,149 +1,91 @@
 /**
- * StoryForge — local extractions store (M1.3.1)
+ * Backend-backed extraction store (M2.4).
  *
- * Persists completed extractions to localStorage so they survive page refreshes
- * and can be listed in the Documents view (M1.3.2). Single-tab, single-user;
- * the real backend store arrives in M2.
+ * Thin async wrapper over `../api.js`. Replaces the localStorage-based store
+ * shipped in M1 — those responsibilities moved server-side in M2.1/M2.2.
  *
- * Record shape:
- *   { id, filename, savedAt: ISO string, payload: ExtractionResult }
+ * Records returned by `listExtractions` are now *summaries* (no `payload`,
+ * no `raw_text`); call `getExtraction(id)` to hydrate the full record before
+ * opening it in the studio.
  */
 
-const KEY = 'storyforge:extractions'
-const CAP = 50
+import {
+  deleteExtractionApi,
+  getExtractionApi,
+  importExtractionApi,
+  listExtractionsApi,
+  listGapStatesApi,
+  patchGapStateApi,
+} from '../api.js'
 
-function read() {
+// ---------- extractions ----------
+
+/** Newest-first list of extractions (summary shape). */
+export async function listExtractions(opts) {
+  return listExtractionsApi(opts)
+}
+
+/** Full record by id, or null if 404. */
+export async function getExtraction(id) {
   try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+    return await getExtractionApi(id)
+  } catch (e) {
+    if (e.status === 404) return null
+    throw e
   }
 }
 
-function write(records) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(records))
-  } catch (e) {
-    // QuotaExceededError when the store fills the 5 MB localStorage budget.
-    // Drop the oldest 5 and retry once. Beyond that we give up silently — by
-    // M2 this lives in SQLite and the limit goes away.
-    if (records.length > 5) {
-      try {
-        localStorage.setItem(KEY, JSON.stringify(records.slice(0, records.length - 5)))
-      } catch {
-        /* swallow — nothing more we can do */
-      }
+/** Delete one. Cascades gap states server-side. */
+export async function deleteExtraction(id) {
+  return deleteExtractionApi(id)
+}
+
+/** Re-insert a full record (used by undo after delete). Idempotent. */
+export async function insertExtraction(record) {
+  // The backend `import` endpoint takes {id, filename, saved_at, payload}.
+  // We pass the cached full record as the payload so it round-trips intact.
+  return importExtractionApi({
+    id: record.id,
+    filename: record.filename,
+    saved_at: record.created_at,
+    payload: {
+      filename: record.filename,
+      raw_text: record.raw_text || '',
+      live: !!record.live,
+      brief: record.brief,
+      actors: record.actors || [],
+      stories: record.stories || [],
+      nfrs: record.nfrs || [],
+      gaps: record.gaps || [],
+    },
+  })
+}
+
+// ---------- per-gap state ----------
+
+/** All gap states for an extraction as a {gapIdx: {resolved, ignored, askedAt}} map. */
+export async function getGapStates(extractionId) {
+  if (!extractionId) return {}
+  const rows = await listGapStatesApi(extractionId)
+  const out = {}
+  for (const r of rows) {
+    out[r.gap_idx] = {
+      resolved: !!r.resolved,
+      ignored: !!r.ignored,
+      askedAt: r.asked_at,
     }
   }
+  return out
 }
 
-function uuid() {
-  const t = Date.now().toString(36)
-  const r = Math.random().toString(36).slice(2, 8)
-  return `ext_${t}_${r}`
-}
-
-/** Save a completed extraction. Newest first; cap at 50. Returns the record. */
-export function saveExtraction(payload) {
-  if (!payload || typeof payload !== 'object') return null
-  const record = {
-    id: uuid(),
-    filename: payload.filename || 'untitled',
-    savedAt: new Date().toISOString(),
-    payload,
-  }
-  const all = read()
-  all.unshift(record)
-  if (all.length > CAP) all.length = CAP
-  write(all)
-  return record
-}
-
-/** Newest-first list of saved extractions. Insertion order is trusted —
- *  saveExtraction unshifts so the array is always newest-first. Sorting on
- *  savedAt is unsafe because back-to-back saves can share a millisecond. */
-export function listExtractions() {
-  return read()
-}
-
-/** Lookup by id; null if missing. */
-export function getExtraction(id) {
-  return read().find((r) => r.id === id) || null
-}
-
-/** Remove one record by id. Also clears any per-gap state for that record. */
-export function deleteExtraction(id) {
-  write(read().filter((r) => r.id !== id))
-  clearGapStates(id)
-}
-
-/** Insert a record at a specific index, preserving its original id.
- *  Used by undo flows after deleteExtraction. */
-export function insertExtraction(record, atIndex = 0) {
-  if (!record || !record.id) return
-  const all = read()
-  const idx = Math.max(0, Math.min(atIndex, all.length))
-  // Skip if the record is somehow already present (defensive)
-  if (all.some((r) => r.id === record.id)) return
-  all.splice(idx, 0, record)
-  if (all.length > CAP) all.length = CAP
-  write(all)
-}
-
-/** Wipe the store (used by future migration to backend in M2.4.5). */
-export function clearExtractions() {
-  write([])
-}
-
-/** Storage budget signal for the Documents view header. */
-export function countExtractions() {
-  return read().length
-}
-
-/* =========================================================================
-   Per-gap state (M1.6.1)
-   Stored under a separate key per extraction:
-     storyforge:gaps:<extractionId> -> { "0": {resolved, ignored, askedAt}, "1": ... }
-   ========================================================================= */
-
-const GAP_KEY = (extractionId) => `storyforge:gaps:${extractionId}`
-
-/** All gap states for an extraction, as a {gapIdx: state} map. */
-export function getGapStates(extractionId) {
-  if (!extractionId) return {}
-  try {
-    const raw = localStorage.getItem(GAP_KEY(extractionId))
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
-/** Merge a patch into one gap's state and write it back. Returns the new state. */
-export function setGapState(extractionId, gapIdx, patch) {
+/** Upsert one gap's state. Returns the new state in the {resolved, ignored, askedAt} shape. */
+export async function setGapState(extractionId, gapIdx, patch) {
   if (!extractionId || gapIdx == null) return null
-  const all = getGapStates(extractionId)
-  const next = { ...(all[gapIdx] || {}), ...patch }
-  all[gapIdx] = next
-  try {
-    localStorage.setItem(GAP_KEY(extractionId), JSON.stringify(all))
-  } catch {
-    /* swallow quota errors — gap state is tiny, this won't happen in practice */
-  }
-  return next
-}
-
-/** Remove all gap state for an extraction (used by deleteExtraction). */
-export function clearGapStates(extractionId) {
-  if (!extractionId) return
-  try {
-    localStorage.removeItem(GAP_KEY(extractionId))
-  } catch {
-    /* ignore */
-  }
+  // Translate camelCase patch -> snake_case API body.
+  const body = {}
+  if ('resolved' in patch) body.resolved = patch.resolved
+  if ('ignored' in patch) body.ignored = patch.ignored
+  if ('askedAt' in patch) body.asked_at = patch.askedAt
+  const r = await patchGapStateApi(extractionId, gapIdx, body)
+  return { resolved: !!r.resolved, ignored: !!r.ignored, askedAt: r.asked_at }
 }
