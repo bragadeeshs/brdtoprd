@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
 from db.models import Extraction, GapState, Project
@@ -31,6 +34,12 @@ log = logging.getLogger("storyforge.extractions")
 router = APIRouter(prefix="/api/extractions", tags=["extractions"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+# Markdown/RST aren't in the platform mimetypes db on every host. Register
+# explicitly so /source returns a stable content-type the browser can render.
+mimetypes.add_type("text/markdown", ".md")
+mimetypes.add_type("text/markdown", ".markdown")
+mimetypes.add_type("text/x-rst", ".rst")
 
 
 # ---------------- list ----------------
@@ -96,6 +105,32 @@ def patch_extraction(
     session.commit()
     session.refresh(row)
     return extraction_to_record(row)
+
+
+# ---------------- source file (M2.3.2) ----------------
+
+
+@router.get("/{extraction_id}/source")
+def get_source(extraction_id: str, session: SessionDep) -> FileResponse:
+    """Stream the original uploaded file back with its inferred mimetype.
+
+    404 covers three real cases: row missing, paste-mode extraction (no upload),
+    or upload file deleted out from under us. We don't differentiate — the
+    user-facing answer is the same ("nothing to show").
+    """
+    row = session.get(Extraction, extraction_id)
+    if row is None or not row.source_file_path:
+        raise HTTPException(status_code=404, detail="No source file for this extraction")
+    path = Path(row.source_file_path)
+    if not path.exists():
+        log.warning("source_file_path missing on disk: %s", path)
+        raise HTTPException(status_code=404, detail="Source file is missing on disk")
+    media_type, _ = mimetypes.guess_type(row.filename)
+    return FileResponse(
+        path,
+        media_type=media_type or "application/octet-stream",
+        filename=row.filename,
+    )
 
 
 # ---------------- delete ----------------

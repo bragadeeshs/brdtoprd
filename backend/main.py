@@ -23,7 +23,12 @@ from extract import extract_requirements, resolve_model
 from models import ExtractionRecord
 from routers import extractions as extractions_router
 from routers import projects as projects_router
-from services.extractions import extraction_to_record, persist_extraction
+from services.extractions import (
+    extraction_to_record,
+    mint_extraction_id,
+    persist_extraction,
+    save_upload,
+)
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 SUPPORTED_EXT = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst"}
@@ -132,6 +137,7 @@ async def extract(
     if file is None and not text:
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
 
+    upload_bytes: bytes | None = None
     if file is not None:
         data = await file.read()
         if len(data) > MAX_BYTES:
@@ -151,6 +157,7 @@ async def extract(
             log.exception("file parse failed")
             raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
         source_name = file.filename or "uploaded"
+        upload_bytes = data
     else:
         raw_text = text or ""
         source_name = filename or "pasted_text.txt"
@@ -168,11 +175,26 @@ async def extract(
         # Persist immediately so the frontend never has to repeat the LLM call.
         # `model_used` records what we actually called — "mock" when no key was set.
         model_used = resolve_model(x_storyforge_model) if result.live else "mock"
+
+        # Mint the id up front so the upload path can reference it before the
+        # row exists. If the disk write fails, we 500 without persisting — no
+        # orphaned row pointing at a missing file.
+        extraction_id = mint_extraction_id()
+        source_path: str | None = None
+        if upload_bytes is not None:
+            try:
+                source_path = save_upload(extraction_id, source_name, upload_bytes)
+            except OSError as e:
+                log.exception("upload save failed")
+                raise HTTPException(status_code=500, detail=f"Could not store uploaded file: {e}")
+
         row = persist_extraction(
             session,
             result=result,
             model_used=model_used,
             project_id=project_id or None,
+            extraction_id=extraction_id,
+            source_file_path=source_path,
         )
         return extraction_to_record(row)
 

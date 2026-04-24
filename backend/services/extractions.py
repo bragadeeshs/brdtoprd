@@ -8,8 +8,12 @@ Two responsibilities:
 
 from __future__ import annotations
 
+import os
+import re
 import secrets
+import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlmodel import Session, select
 
@@ -21,6 +25,13 @@ from models import (
     ExtractionSummary,
     GapStateRead,
     ProjectRead,
+)
+
+UPLOAD_ROOT = Path(
+    os.environ.get(
+        "STORYFORGE_UPLOAD_DIR",
+        str(Path(__file__).resolve().parent.parent / "uploads"),
+    )
 )
 
 
@@ -103,6 +114,7 @@ def persist_extraction(
     project_id: str | None = None,
     extraction_id: str | None = None,
     created_at: datetime | None = None,
+    source_file_path: str | None = None,
 ) -> Extraction:
     """Insert one Extraction row from a fresh ExtractionResult (or import)."""
     row = Extraction(
@@ -112,6 +124,7 @@ def persist_extraction(
         model_used=model_used,
         live=result.live,
         project_id=project_id,
+        source_file_path=source_file_path,
         created_at=created_at or datetime.now(timezone.utc),
         brief=result.brief.model_dump(),
         actors=list(result.actors),
@@ -126,7 +139,10 @@ def persist_extraction(
 
 
 def delete_extraction(session: Session, extraction_id: str) -> bool:
-    """Delete extraction + cascade its gap states. Returns True if it existed."""
+    """Delete extraction + cascade its gap states + remove uploaded source.
+
+    Returns True if it existed.
+    """
     row = session.get(Extraction, extraction_id)
     if row is None:
         return False
@@ -138,7 +154,64 @@ def delete_extraction(session: Session, extraction_id: str) -> bool:
         session.delete(s)
     session.delete(row)
     session.commit()
+    # Best-effort upload cleanup. Fail silently — losing the file isn't worth
+    # blocking the delete, and the row is already gone.
+    remove_upload_dir(extraction_id)
     return True
+
+
+# ---------- uploads (M2.3) ----------
+
+# Strip path separators, control chars, and leading dots. Keep dots in extensions.
+_UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._\- ]")
+
+
+def _safe_filename(filename: str) -> str:
+    """Sanitize a user-supplied filename for on-disk storage.
+
+    Strips path separators and control chars; collapses to "uploaded" when the
+    result would be empty. The raw filename is still echoed back to the user
+    via `Extraction.filename`; this is purely for the path on disk.
+    """
+    base = Path(filename).name  # drops any "../" the client might send
+    cleaned = _UNSAFE_NAME.sub("_", base).strip(" .") or "uploaded"
+    return cleaned[:200]  # keep paths under most filesystem limits
+
+
+def upload_dir_for(extraction_id: str) -> Path:
+    """Resolve the per-extraction upload directory, ensuring it stays under root."""
+    candidate = (UPLOAD_ROOT / extraction_id).resolve()
+    root = UPLOAD_ROOT.resolve()
+    # Defensive: extraction_id is server-minted (`ext_<base36>_<rand6>`), but
+    # belt-and-braces against a path-traversal id sneaking in via /import.
+    if not str(candidate).startswith(str(root) + os.sep) and candidate != root:
+        raise ValueError(f"refusing to write outside upload root: {candidate}")
+    return candidate
+
+
+def save_upload(extraction_id: str, filename: str, data: bytes) -> str:
+    """Write bytes to `<UPLOAD_ROOT>/<extraction_id>/<safe_filename>`.
+
+    Returns the absolute path (which is what `Extraction.source_file_path` stores).
+    Overwrites any existing file at the same path — re-running an extraction with
+    the same filename shouldn't double-store.
+    """
+    safe = _safe_filename(filename)
+    target_dir = upload_dir_for(extraction_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / safe
+    target.write_bytes(data)
+    return str(target)
+
+
+def remove_upload_dir(extraction_id: str) -> None:
+    """Recursively remove the per-extraction upload directory if it exists."""
+    try:
+        target = upload_dir_for(extraction_id)
+    except ValueError:
+        return
+    if target.exists():
+        shutil.rmtree(target, ignore_errors=True)
 
 
 # ---------- projects ----------
