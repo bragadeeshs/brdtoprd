@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { patchExtractionApi } from '../api.js'
 import {
   deleteExtraction,
   getExtraction,
@@ -11,7 +12,10 @@ import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import {
   AlertTriangle,
+  Check,
   FileText,
+  FolderClosed,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
@@ -175,14 +179,136 @@ function ErrorState({ error, onRetry }) {
   )
 }
 
+/**
+ * Move-to-project popover. Renders the menu inline (anchored to the row Card
+ * via position:relative on the parent) plus a fixed-position click-catcher
+ * that closes on outside click or Esc.
+ */
+function MoveMenu({ projects, currentProjectId, onPick, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <>
+      {/* click-outside catcher */}
+      <div
+        onClick={(e) => { e.stopPropagation(); onClose() }}
+        style={{ position: 'fixed', inset: 0, zIndex: 50 }}
+      />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          top: '100%',
+          right: 8,
+          marginTop: 4,
+          minWidth: 220,
+          maxHeight: 280,
+          overflowY: 'auto',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+          boxShadow: 'var(--shadow-lg)',
+          zIndex: 51,
+          padding: 4,
+        }}
+      >
+        <div
+          style={{
+            padding: '6px 10px 4px',
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: 0.6,
+            textTransform: 'uppercase',
+            color: 'var(--text-soft)',
+          }}
+        >
+          Move to project
+        </div>
+        {projects.length === 0 && (
+          <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            No projects yet — create one in the sidebar.
+          </div>
+        )}
+        {projects.map((p) => {
+          const isCurrent = p.id === currentProjectId
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onPick(p.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                width: '100%',
+                padding: '6px 10px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                cursor: 'pointer',
+                fontSize: 13,
+                color: 'var(--text-strong)',
+                textAlign: 'left',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <FolderClosed size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {p.name}
+              </span>
+              {isCurrent && <Check size={13} style={{ color: 'var(--accent-strong)', flexShrink: 0 }} />}
+            </button>
+          )
+        })}
+        {currentProjectId && (
+          <>
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+            <button
+              type="button"
+              onClick={() => onPick(null)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                width: '100%',
+                padding: '6px 10px',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                cursor: 'pointer',
+                fontSize: 13,
+                color: 'var(--text-muted)',
+                textAlign: 'left',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <X size={13} style={{ flexShrink: 0 }} />
+              Remove from project
+            </button>
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
 export default function Documents() {
   const navigate = useNavigate()
-  const { restoreExtraction } = useApp()
+  const { restoreExtraction, projects, projectById, refreshProjects } = useApp()
   const { toast } = useToast()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
+  const [menuFor, setMenuFor] = useState(null)
 
   const refresh = async () => {
     setLoading(true)
@@ -217,6 +343,26 @@ export default function Documents() {
     restoreExtraction(record)
   }
 
+  const onMove = async (record, projectId) => {
+    setMenuFor(null)
+    const target = projectId ?? ''  // empty string clears server-side
+    if ((record.project_id || null) === (projectId || null)) return
+    try {
+      await patchExtractionApi(record.id, { project_id: target })
+      setRecords((rs) =>
+        rs.map((r) => (r.id === record.id ? { ...r, project_id: projectId || null } : r)),
+      )
+      await refreshProjects()
+      toast.success(
+        projectId
+          ? `Moved "${record.filename}" to ${projectById[projectId]?.name || 'project'}`
+          : `Removed "${record.filename}" from project`,
+      )
+    } catch (err) {
+      toast.error(err.message || 'Could not move document')
+    }
+  }
+
   const onDelete = async (record, e) => {
     e.stopPropagation()
     // Capture the full record BEFORE delete so undo can re-import it.
@@ -234,6 +380,7 @@ export default function Documents() {
       return
     }
     setRecords((rs) => rs.filter((r) => r.id !== record.id))
+    if (record.project_id) await refreshProjects()
     toast.success(`Deleted "${record.filename}"`, {
       duration: 5000,
       action: {
@@ -242,6 +389,7 @@ export default function Documents() {
           try {
             await insertExtraction(full)
             await refresh()
+            if (record.project_id) await refreshProjects()
           } catch (err) {
             toast.error(err.message || 'Undo failed')
           }
@@ -414,6 +562,7 @@ export default function Documents() {
           const gaps = r.gap_count ?? 0
           const actors = r.actor_count ?? 0
           const isLive = r.live
+          const inProject = r.project_id ? projectById[r.project_id] : null
           return (
             <Card
               key={r.id}
@@ -426,6 +575,7 @@ export default function Documents() {
                 alignItems: 'center',
                 gap: 14,
                 cursor: 'pointer',
+                position: 'relative',
                 animation: `fade-in .25s ease-out ${Math.min(i * 30, 300)}ms both`,
               }}
               title={`Open ${r.filename}`}
@@ -476,11 +626,62 @@ export default function Documents() {
                   />
                 </div>
               </div>
+              {inProject && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigate(`/projects/${inProject.id}`) }}
+                  title={`Open project ${inProject.name}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '3px 8px',
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent-ink)',
+                    border: 'none',
+                    fontSize: 11.5,
+                    fontWeight: 500,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    maxWidth: 160,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <FolderClosed size={11} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {inProject.name}
+                  </span>
+                </button>
+              )}
               {!isLive && (
                 <Badge tone="warn" size="sm">
                   Mock
                 </Badge>
               )}
+              <button
+                type="button"
+                className="row-action"
+                aria-label="Move to project"
+                title="Move to project"
+                onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === r.id ? null : r.id) }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 6,
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <MoreHorizontal size={14} />
+              </button>
               <button
                 type="button"
                 className="row-delete"
@@ -502,6 +703,14 @@ export default function Documents() {
               >
                 <Trash size={14} />
               </button>
+              {menuFor === r.id && (
+                <MoveMenu
+                  projects={projects}
+                  currentProjectId={r.project_id}
+                  onPick={(pid) => onMove(r, pid)}
+                  onClose={() => setMenuFor(null)}
+                />
+              )}
             </Card>
           )
         })}

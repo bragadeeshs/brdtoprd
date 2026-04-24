@@ -1,16 +1,17 @@
 import React, { createContext, useContext } from 'react'
 
 /**
- * App-level context for state that pages need to read or mutate.
- *
- * Today (M1.3.3): used by Documents to restore a saved extraction.
- * Tomorrow (M1.4): Settings will read/write theme, API key, model preference.
- * Tomorrow+ (M2): replaces local state with server-backed equivalents.
+ * App-level context for state pages need to read or mutate.
  *
  * Shape passed in `value`:
  *   {
- *     restoreExtraction(payload): void   // hydrate the result view from a saved record
- *     reset(): void                      // clear current extraction + nav home
+ *     restoreExtraction(rowOrRecord): void   // hydrate the result view from a saved record/summary
+ *     reset(): void                          // clear current extraction + nav home
+ *     theme, setTheme(next)                  // light / dark / system
+ *     projects: ProjectRead[]                // backend projects list (cached app-wide)
+ *     projectsLoading: boolean
+ *     refreshProjects(): Promise<void>       // re-fetch after create/rename/delete
+ *     projectById: Record<string, ProjectRead>   // quick lookup for badges
  *   }
  */
 const AppCtx = createContext(null)

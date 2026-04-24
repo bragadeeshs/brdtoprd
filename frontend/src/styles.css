@@ -366,14 +366,18 @@ a:hover {
 
 /* =========================================================================
    Generic hover-reveal — used by copy buttons on stories + gaps (M1.9.3)
+   and the per-row action buttons on doc rows (M2.5)
    ========================================================================= */
-.has-action .row-action {
+.has-action .row-action,
+.doc-row .row-action {
   opacity: 0;
   transition: opacity 0.15s, color 0.15s, background 0.15s;
 }
 
 .has-action:hover .row-action,
-.has-action .row-action:focus-visible {
+.has-action .row-action:focus-visible,
+.doc-row:hover .row-action,
+.doc-row .row-action:focus-visible {
   opacity: 1;
 }
 

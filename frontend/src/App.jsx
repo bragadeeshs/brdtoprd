@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { extract } from './api.js'
+import { extract, listProjectsApi } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import Documents from './pages/Documents.jsx'
+import Project from './pages/Project.jsx'
 import Settings from './pages/Settings.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
@@ -139,6 +140,8 @@ export default function App() {
   const [showGaps, setShowGaps] = useState(true)
   const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
   const [pendingName, setPendingName] = useState('')
+  const [projects, setProjects] = useState([])
+  const [projectsLoading, setProjectsLoading] = useState(true)
 
   const location = useLocation()
   const navigate = useNavigate()
@@ -183,6 +186,25 @@ export default function App() {
       }
     }).catch((e) => console.warn('migration failed', e))
   }, [])
+
+  const refreshProjects = useCallback(async () => {
+    setProjectsLoading(true)
+    try {
+      setProjects(await listProjectsApi())
+    } catch (e) {
+      console.warn('failed to load projects', e)
+    } finally {
+      setProjectsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { refreshProjects() }, [refreshProjects])
+
+  const projectById = useMemo(() => {
+    const m = {}
+    for (const p of projects) m[p.id] = p
+    return m
+  }, [projects])
 
   const handleExtract = async ({ file, text, filename }) => {
     setLoading(true)
@@ -232,7 +254,16 @@ export default function App() {
     }
   }
 
-  const appCtx = { restoreExtraction, reset, theme, setTheme }
+  const appCtx = {
+    restoreExtraction,
+    reset,
+    theme,
+    setTheme,
+    projects,
+    projectsLoading,
+    refreshProjects,
+    projectById,
+  }
 
   return (
     <AppProvider value={appCtx}>
@@ -267,6 +298,7 @@ export default function App() {
             }
           />
           <Route path="/documents" element={<Documents />} />
+          <Route path="/projects/:id" element={<Project />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
