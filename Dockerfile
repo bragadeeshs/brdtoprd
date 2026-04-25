@@ -35,5 +35,8 @@ RUN useradd --system --uid 1001 --shell /usr/sbin/nologin storyforge \
  && chown -R storyforge:storyforge /app
 USER storyforge
 
+# Render injects PORT at runtime (free tier: 10000); fall back to 8000 locally.
+# Shell-form CMD so ${PORT:-8000} actually expands — exec form would treat the
+# literal string as a port number and crash with "invalid port: '${PORT:-8000}'".
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}

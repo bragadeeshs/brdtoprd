@@ -49,9 +49,16 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="StoryForge backend", version="0.3.0", lifespan=lifespan)
 
+# CORS — local dev origins always allowed; prod adds anything in CORS_ORIGINS
+# (comma-separated). On Render's single-container deploy the SPA is served
+# from the same origin as the API so CORS isn't even triggered at runtime,
+# but keeping it tight protects us if someone points a third-party frontend
+# at the backend.
+_default_cors = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_extra_cors = [o.strip() for o in (os.environ.get("CORS_ORIGINS") or "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_default_cors + _extra_cors,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -240,7 +247,30 @@ async def extract(
 
 # Mount built frontend last so /api/* routes take precedence. Only mounts when
 # the static dir exists — dev mode (Vite on :5173 proxying to us) skips this.
+#
+# `SPAStaticFiles` falls back to `index.html` on 404 so client-side routes
+# (`/documents`, `/projects/:id`, `/account`, `/sign-in/*`, etc) survive a
+# direct page load or browser refresh — without it React Router never gets
+# to handle those paths because StaticFiles 404s before the fallback.
+#
+# Modern Starlette raises HTTPException for misses *and* may return a 404
+# Response object depending on the path shape (e.g. trailing-slash redirects)
+# — handle both. Importing inside the class to keep the symbol scoped.
+class _SPAStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        from starlette.exceptions import HTTPException as _StarletteHTTPException
+        try:
+            response = await super().get_response(path, scope)
+        except _StarletteHTTPException as e:
+            if e.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
+        if response.status_code == 404:
+            return await super().get_response("index.html", scope)
+        return response
+
+
 _static_dir = os.environ.get("STATIC_DIR", "static")
 if os.path.isdir(_static_dir):
-    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
-    log.info("serving built frontend from %s", _static_dir)
+    app.mount("/", _SPAStaticFiles(directory=_static_dir, html=True), name="static")
+    log.info("serving built frontend from %s (SPA fallback enabled)", _static_dir)

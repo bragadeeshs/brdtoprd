@@ -1,0 +1,67 @@
+# Render infrastructure-as-code (M3.10).
+#
+# Single-container deploy: the Dockerfile builds the Vite SPA into static
+# files and copies them next to FastAPI; uvicorn serves both. One service,
+# one URL, no CORS gymnastics.
+#
+# Free tier behavior:
+#   * 512 MB RAM, 0.1 CPU. Plenty for our workload.
+#   * Spins down after 15 min of inactivity. First request after sleep is
+#     ~30s as the container warms back up. Acceptable for dev/demo.
+#   * Auto-deploys on every push to `main`.
+#
+# Secrets are NOT declared here — they're set in the Render dashboard under
+# Environment to keep them out of git. The list lives in the README + the
+# M3.10 done-log entry; missing any of them surfaces as a startup error
+# from the relevant service module (`STORYFORGE_MASTER_KEY` / `R2_*` etc).
+
+services:
+  - type: web
+    name: storyforge
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    rootDir: .
+    dockerfilePath: ./Dockerfile
+
+    # /api/health stays unauthed (M3.1 preserved this for infra probes) so
+    # Render's health check works without a Clerk session.
+    healthCheckPath: /api/health
+
+    # PORT is auto-injected by Render. Everything else is set via dashboard.
+    # Listing them here as `sync: false` documents the requirement without
+    # baking the values into source control.
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: STORYFORGE_MODEL
+        sync: false
+      - key: STORYFORGE_MASTER_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: WELCOME_FROM_EMAIL
+        sync: false
+      - key: WELCOME_FROM_NAME
+        sync: false
+      # Set to your Render URL after first deploy — e.g.
+      # https://storyforge-xxxx.onrender.com — only matters if a third-party
+      # frontend ever needs to call this backend. The single-container deploy
+      # serves the SPA from the same origin so CORS isn't triggered at runtime.
+      - key: CORS_ORIGINS
+        sync: false
