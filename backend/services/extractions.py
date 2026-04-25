@@ -18,6 +18,7 @@ from pathlib import Path
 
 import anthropic
 from fastapi import HTTPException
+from sqlalchemy import update
 from sqlmodel import Session, select
 
 from db.models import Extraction, GapState, Project, UsageLog
@@ -213,16 +214,33 @@ def delete_extraction(session: Session, extraction_id: str, *, user) -> bool:
     row = session.get(Extraction, extraction_id)
     if not in_scope(row, user):
         return False
+    # Capture the source path BEFORE deleting the row — once the session
+    # commits, we lose the field. Cleanup happens after commit so a slow R2
+    # delete can't block the DB transaction.
+    source_path = row.source_file_path
     # Manually delete gap states — no SA cascade configured (kept the schema simple)
     states = session.exec(
         select(GapState).where(GapState.extraction_id == extraction_id)
     ).all()
     for s in states:
         session.delete(s)
+    # Detach usage_log rows so they outlive the extraction. This preserves
+    # the cost record by design — losing the extraction shouldn't make
+    # you think you spent less than you did. Postgres enforces FKs strictly
+    # (unlike SQLite default) so we must NULL the FK before DELETE'ing the
+    # extraction or `usage_log_extraction_id_fkey` would fire.
+    session.exec(
+        update(UsageLog)
+        .where(UsageLog.extraction_id == extraction_id)
+        .values(extraction_id=None)
+    )
     session.delete(row)
     session.commit()
-    # Best-effort upload cleanup. Fail silently — losing the file isn't worth
-    # blocking the delete, and the row is already gone.
+    # Best-effort upload cleanup — both R2 and local cases handled by
+    # `remove_upload(path)`. Fail silently; row is already gone.
+    remove_upload(source_path)
+    # Belt-and-braces: also clean any local-disk per-extraction directory in
+    # case the legacy layout existed in parallel (no-op in pure R2 mode).
     remove_upload_dir(extraction_id)
     return True
 
@@ -257,13 +275,27 @@ def upload_dir_for(extraction_id: str) -> Path:
 
 
 def save_upload(extraction_id: str, filename: str, data: bytes) -> str:
-    """Write bytes to `<UPLOAD_ROOT>/<extraction_id>/<safe_filename>`.
+    """Persist an uploaded source file. Returns the value to store in
+    `Extraction.source_file_path`.
 
-    Returns the absolute path (which is what `Extraction.source_file_path` stores).
-    Overwrites any existing file at the same path — re-running an extraction with
-    the same filename shouldn't double-store.
+    M3.9: when `R2_BUCKET` is set, upload to Cloudflare R2 and return
+    `r2://<bucket>/<key>`. Otherwise (dev / unset), write to local disk under
+    `<UPLOAD_ROOT>/<extraction_id>/<safe_filename>` and return the absolute
+    path.
     """
+    from services import storage  # local import to avoid cycle
+
     safe = _safe_filename(filename)
+
+    if storage.is_enabled():
+        # Key layout: <extraction_id>/<safe_name>. extraction_id is server-
+        # minted (`ext_<base36-ts>_<rand6>`) so it's globally unique and
+        # safe to use as a path component. content_type guess is best-effort.
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(filename)
+        key = f"{extraction_id}/{safe}"
+        return storage.upload_bytes(key, data, content_type=content_type)
+
     target_dir = upload_dir_for(extraction_id)
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / safe
@@ -271,8 +303,34 @@ def save_upload(extraction_id: str, filename: str, data: bytes) -> str:
     return str(target)
 
 
+def remove_upload(source_file_path: str | None) -> None:
+    """Best-effort cleanup of a persisted source file.
+
+    Branches on the value's shape: R2-style paths go through the storage
+    helper, local-style paths fall back to recursive directory removal of
+    the per-extraction folder.
+    """
+    if not source_file_path:
+        return
+    from services import storage  # local import to avoid cycle
+
+    if storage.is_r2_path(source_file_path):
+        storage.delete_path(source_file_path)
+        return
+
+    # Local-disk legacy: remove the parent directory (one extraction → one dir).
+    try:
+        parent = Path(source_file_path).resolve().parent
+        if parent.exists() and parent.is_dir():
+            shutil.rmtree(parent, ignore_errors=True)
+    except Exception as e:  # noqa: BLE001
+        log.warning("local upload cleanup failed for %s: %s", source_file_path, e)
+
+
 def remove_upload_dir(extraction_id: str) -> None:
-    """Recursively remove the per-extraction upload directory if it exists."""
+    """Legacy local-disk cleanup by extraction_id. Kept for callers that
+    don't have the source_file_path to hand. R2 cleanup is path-driven and
+    must go through `remove_upload(path)`."""
     try:
         target = upload_dir_for(extraction_id)
     except ValueError:

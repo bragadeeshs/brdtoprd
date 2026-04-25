@@ -293,9 +293,22 @@ def export_user_data(session: SessionDep, user: UserDep) -> StreamingResponse:
             f"- `uploads/` — original uploaded source files (PDF/.docx/.txt) that backed each extraction\n",
         )
 
-        # Original uploads, one folder per extraction id.
+        # Original uploads, one folder per extraction id. Branches on storage
+        # backend: R2-stored sources are downloaded once and inlined into the
+        # zip; local-disk sources are added directly. Failures are non-fatal —
+        # we'd rather ship a partial export than fail the whole download.
+        from services import storage  # local import to keep boto3 off non-export paths
         for e in extractions:
             if not e.source_file_path:
+                continue
+            if storage.is_r2_path(e.source_file_path):
+                try:
+                    bucket_, key = storage.parse_r2_path(e.source_file_path)
+                    obj = storage._client().get_object(Bucket=bucket_, Key=key)
+                    body = obj["Body"].read()
+                    zf.writestr(f"uploads/{e.id}/{Path(key).name}", body)
+                except Exception as ex:  # noqa: BLE001
+                    log.warning("R2 export fetch failed for %s: %s", e.id, ex)
                 continue
             p = Path(e.source_file_path)
             if not p.exists():

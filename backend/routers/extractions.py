@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
@@ -145,15 +145,33 @@ def patch_extraction(
 
 
 @router.get("/{extraction_id}/source")
-def get_source(extraction_id: str, session: SessionDep, user: UserDep) -> FileResponse:
-    """Stream the original uploaded file back with its inferred mimetype.
+def get_source(extraction_id: str, session: SessionDep, user: UserDep):
+    """Return the original uploaded file.
 
-    404 covers four cases (missing row, foreign owner, paste-mode extraction,
-    file vanished) — same user-facing answer ("nothing to show").
+    M3.9: when the source lives on R2 we 302-redirect to a presigned URL
+    (15-minute TTL) — the browser fetches direct from Cloudflare, no proxy.
+    Local-disk uploads keep using FileResponse for dev parity.
+
+    404 covers five cases (missing row, foreign owner, paste-mode extraction,
+    file vanished, R2 path malformed) — same user-facing answer.
     """
+    from services import storage  # local import keeps boto3 off the import path
+                                  # for callers that don't use it.
+
     row = _owned_extraction(session, extraction_id, user)
     if not row.source_file_path:
         raise HTTPException(status_code=404, detail="No source file for this extraction")
+
+    if storage.is_r2_path(row.source_file_path):
+        try:
+            url = storage.presigned_get_url(row.source_file_path)
+        except Exception as e:  # noqa: BLE001
+            log.warning("presigned_get_url failed for %s: %s", row.source_file_path, e)
+            raise HTTPException(status_code=404, detail="Source file is missing on disk")
+        # 302 + Cache-Control:no-store so a stale URL doesn't survive past the
+        # 15-min presign window in any intermediary cache.
+        return RedirectResponse(url=url, status_code=302, headers={"Cache-Control": "no-store"})
+
     path = Path(row.source_file_path)
     if not path.exists():
         log.warning("source_file_path missing on disk: %s", path)
