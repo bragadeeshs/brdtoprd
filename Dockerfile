@@ -1,4 +1,7 @@
-# syntax=docker/dockerfile:1.7
+# Note: no `# syntax=docker/dockerfile:1.x` line on purpose — Render's BuildKit
+# fails to pull the frontend image with "grpc server closed unexpectedly". We
+# don't use any 1.7-only features (no --mount=type=cache, no secrets), so
+# falling back to the default Dockerfile frontend is harmless.
 
 # ---- Stage 1: build the Vite frontend ----
 FROM node:20-alpine AS frontend-build
