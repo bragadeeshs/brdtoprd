@@ -211,6 +211,52 @@ export async function putMeSettingsApi({ anthropicKey, modelDefault } = {}) {
   return jsonOrThrow(res)
 }
 
+// ---------- account: usage + legacy + export (M3.8) ----------
+
+/** Usage aggregates: this_month, all_time, by_model, last_extraction_at. */
+export async function getMeUsageApi() {
+  const res = await apiFetch('/api/me/usage')
+  return jsonOrThrow(res)
+}
+
+/** Counts of orphan `user_id='local'` rows still in the DB. */
+export async function getMeLegacyApi() {
+  const res = await apiFetch('/api/me/legacy')
+  return jsonOrThrow(res)
+}
+
+/** One-shot reassign all `user_id='local'` rows to the calling user. */
+export async function adoptLegacyApi() {
+  const res = await apiFetch('/api/me/legacy/adopt', { method: 'POST' })
+  return jsonOrThrow(res)
+}
+
+/**
+ * Trigger the GDPR export. Streams a ZIP — we read it as a Blob and let the
+ * browser save via a synthesised <a download>. Returns nothing (side-effect).
+ */
+export async function downloadMeExport() {
+  const res = await apiFetch('/api/me/export')
+  if (!res.ok) {
+    const err = new Error(await readError(res))
+    err.status = res.status
+    throw err
+  }
+  const blob = await res.blob()
+  // Honor server-supplied filename if present.
+  const cd = res.headers.get('content-disposition') || ''
+  const match = cd.match(/filename="([^"]+)"/)
+  const filename = match ? match[1] : 'storyforge-export.zip'
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // ---------- health + key test ----------
 
 /** Health endpoint is unauth-protected; skip the auth header to avoid noise. */

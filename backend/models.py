@@ -155,6 +155,50 @@ class ProjectPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
 
 
+# ----- Usage + legacy (M3.8) -----
+
+
+class UsageBucket(BaseModel):
+    """Aggregate counts over some window (this_month / all_time)."""
+    model_config = ConfigDict(extra="forbid")
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_cents: int = 0
+
+
+class UsageByModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str
+    calls: int
+    cost_cents: int
+
+
+class UsageSummary(BaseModel):
+    """Response from GET /api/me/usage — drives the Account page usage card."""
+    model_config = ConfigDict(extra="forbid")
+    this_month: UsageBucket
+    all_time: UsageBucket
+    by_model: list[UsageByModel] = Field(default_factory=list)
+    last_extraction_at: datetime | None = None
+
+
+class LegacyCount(BaseModel):
+    """Counts of pre-auth `user_id='local'` rows still in the DB."""
+    model_config = ConfigDict(extra="forbid")
+    extractions: int
+    projects: int
+    usage_logs: int
+
+
+class LegacyAdoptResult(BaseModel):
+    """Counts of rows reassigned by POST /api/me/legacy/adopt."""
+    model_config = ConfigDict(extra="forbid")
+    adopted_extractions: int
+    adopted_projects: int
+    adopted_usage_logs: int
+
+
 # ----- User settings (M3.4.4) -----
 
 

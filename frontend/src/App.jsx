@@ -7,6 +7,7 @@ import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
+import Account from './pages/Account.jsx'
 import Documents from './pages/Documents.jsx'
 import Project from './pages/Project.jsx'
 import Settings from './pages/Settings.jsx'
@@ -348,6 +349,9 @@ function AuthedApp() {
           />
           <Route path="/documents" element={<Documents />} />
           <Route path="/projects/:id" element={<Project />} />
+          {/* Account uses hash routing inside Clerk's UserProfile, so the
+              react-router path matches both /account and /account/* */}
+          <Route path="/account/*" element={<Account />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -13,6 +13,7 @@ import {
   Plus,
   Search,
   Settings,
+  User,
   X,
 } from './icons.jsx'
 
@@ -209,6 +210,7 @@ export default function Sidebar({ onNew }) {
         <NavItem icon={<FileText size={16} />} label="Documents" to="/documents" />
         <ProjectsSection />
         <div style={{ marginTop: 12 }}>
+          <NavItem icon={<User size={16} />} label="Account" to="/account" />
           <NavItem icon={<Settings size={16} />} label="Settings" to="/settings" />
         </div>
       </div>
