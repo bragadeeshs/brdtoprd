@@ -18,8 +18,10 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import ssl
 from functools import lru_cache
 
+import certifi
 import jwt
 from jwt import InvalidTokenError, PyJWKClient
 
@@ -52,7 +54,17 @@ def _config() -> tuple[str, PyJWKClient]:
     jwks_url = f"{issuer}/.well-known/jwks.json"
     log.info("Clerk auth configured: issuer=%s", issuer)
     # PyJWKClient handles JWKS fetch + caching + key rotation automatically.
-    return issuer, PyJWKClient(jwks_url, cache_keys=True, lifespan=3600)
+    # Pass an explicit SSL context backed by certifi's CA bundle — Python on
+    # macOS (python.org installer, homebrew, pyenv) often ships without the
+    # system CA store wired up, which would otherwise blow up here with
+    # "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate".
+    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    return issuer, PyJWKClient(
+        jwks_url,
+        cache_keys=True,
+        lifespan=3600,
+        ssl_context=ssl_ctx,
+    )
 
 
 class ClerkAuthError(Exception):
