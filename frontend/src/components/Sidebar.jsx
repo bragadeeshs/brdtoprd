@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { UserButton, useUser } from '@clerk/clerk-react'
+import { OrganizationSwitcher, UserButton, useUser } from '@clerk/clerk-react'
 import { createProjectApi } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from './Toast.jsx'
@@ -203,6 +203,31 @@ export default function Sidebar({ onNew }) {
         <IconButton label="New extraction" size={28} onClick={onNew}>
           <Edit size={15} />
         </IconButton>
+      </div>
+
+      {/* Workspace switcher (Clerk Organizations).
+          hidePersonal=false so users keep "Personal account" as a switchable
+          context — matches our backend scope rule (personal vs org). */}
+      <div style={{ padding: '4px 12px 8px' }}>
+        <OrganizationSwitcher
+          hidePersonal={false}
+          afterSelectOrganizationUrl="/"
+          afterCreateOrganizationUrl="/"
+          afterLeaveOrganizationUrl="/"
+          appearance={{
+            elements: {
+              organizationSwitcherTrigger: {
+                width: '100%',
+                justifyContent: 'space-between',
+                padding: '6px 8px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-elevated)',
+                fontSize: '12.5px',
+              },
+            },
+          }}
+        />
       </div>
 
       {/* Scrollable nav */}

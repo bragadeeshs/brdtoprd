@@ -40,6 +40,11 @@ class Project(SQLModel, table=True):
     # M3.2 isolation. Existing pre-M3.2 rows retain user_id="local"; routes
     # filter by current_user.user_id so a real user never sees orphan local data.
     user_id: str = Field(default="local", index=True)
+    # M3.3 workspaces. NULL when the row was created in personal context;
+    # set to Clerk's `org_xxx` when created inside an organization. Routes
+    # scope by org_id when the caller has an active org context, else by
+    # (user_id, org_id IS NULL).
+    org_id: str | None = Field(default=None, index=True)
 
 
 class Extraction(SQLModel, table=True):
@@ -70,6 +75,8 @@ class Extraction(SQLModel, table=True):
 
     # M3.2 isolation — see note on Project.user_id.
     user_id: str = Field(default="local", index=True)
+    # M3.3 workspaces — see note on Project.org_id.
+    org_id: str | None = Field(default=None, index=True)
 
     created_at: datetime = Field(default_factory=_utcnow, index=True)
 
@@ -135,6 +142,10 @@ class UsageLog(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: str = Field(default="local", index=True)
+    # M3.3 — usage attributes to a workspace when the call was made in org
+    # context, so org-level billing aggregation is one query (not a join via
+    # extraction). NULL for personal-context calls.
+    org_id: str | None = Field(default=None, index=True)
     extraction_id: str | None = Field(default=None, foreign_key="extraction.id", index=True)
     action: str = Field(default="extract")  # extract | rerun | future actions
     model: str

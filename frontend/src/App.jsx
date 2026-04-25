@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react'
+import { SignedIn, SignedOut, useAuth, useOrganization } from '@clerk/clerk-react'
 import { extract, listProjectsApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
@@ -147,6 +147,15 @@ function AuthedApp() {
     return () => setTokenGetter(null)
   }, [getToken])
 
+  // M3.3 — track active workspace. Switching org via Clerk's
+  // <OrganizationSwitcher> re-issues the JWT with the new org_id claim;
+  // we refresh cached data + reset the open studio so the user doesn't see
+  // rows from the previous scope. Clerk also navigates to "/" on switch
+  // (afterSelectOrganizationUrl), which triggers Documents/Project pages
+  // to unmount and refetch on next mount.
+  const { organization, isLoaded: orgLoaded } = useOrganization()
+  const orgId = organization?.id || null
+
   const [extraction, setExtraction] = useState(null)
   const [extractionId, setExtractionId] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -213,6 +222,16 @@ function AuthedApp() {
   }, [])
 
   useEffect(() => { refreshProjects() }, [refreshProjects])
+
+  // Re-fetch + reset whenever the active workspace changes. orgId is null
+  // for personal context. Skipped until Clerk's org info has loaded so we
+  // don't fire a redundant fetch immediately after the bootstrap one.
+  useEffect(() => {
+    if (!orgLoaded) return
+    refreshProjects()
+    setExtraction(null)
+    setExtractionId(null)
+  }, [orgId, orgLoaded, refreshProjects])
 
   const projectById = useMemo(() => {
     const m = {}

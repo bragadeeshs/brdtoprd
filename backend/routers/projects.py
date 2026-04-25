@@ -17,6 +17,7 @@ from services.extractions import (
     mint_project_id,
     project_to_read,
 )
+from services.scope import apply_scope, in_scope
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -24,25 +25,22 @@ SessionDep = Annotated[Session, Depends(get_session)]
 UserDep = Annotated[CurrentUser, Depends(current_user)]
 
 
-def _owned_project(session: Session, project_id: str, user_id: str) -> Project:
-    """Fetch a project, asserting current-user ownership. 404 on miss-or-foreign."""
+def _owned_project(session: Session, project_id: str, user: CurrentUser) -> Project:
+    """Fetch a project, asserting it's in the caller's current scope (M3.3)."""
     row = session.get(Project, project_id)
-    if row is None or row.user_id != user_id:
+    if not in_scope(row, user):
         raise HTTPException(status_code=404, detail="Project not found")
     return row
 
 
 @router.get("", response_model=list[ProjectRead])
 def list_projects(session: SessionDep, user: UserDep) -> list[ProjectRead]:
-    rows = session.exec(
-        select(Project)
-        .where(Project.user_id == user.user_id)
-        .order_by(Project.created_at.desc())
-    ).all()
+    stmt = apply_scope(select(Project), Project, user).order_by(Project.created_at.desc())
+    rows = session.exec(stmt).all()
     return [
         project_to_read(
             r,
-            extraction_count=count_extractions_for_project(session, r.id, user_id=user.user_id),
+            extraction_count=count_extractions_for_project(session, r.id, user=user),
         )
         for r in rows
     ]
@@ -57,6 +55,7 @@ def create_project(payload: ProjectCreate, session: SessionDep, user: UserDep) -
         id=mint_project_id(),
         name=name,
         user_id=user.user_id,
+        org_id=user.org_id,
         created_at=datetime.now(timezone.utc),
     )
     session.add(row)
@@ -69,7 +68,7 @@ def create_project(payload: ProjectCreate, session: SessionDep, user: UserDep) -
 def patch_project(
     project_id: str, patch: ProjectPatch, session: SessionDep, user: UserDep
 ) -> ProjectRead:
-    row = _owned_project(session, project_id, user.user_id)
+    row = _owned_project(session, project_id, user)
     if patch.name is not None:
         name = patch.name.strip()
         if not name:
@@ -80,21 +79,20 @@ def patch_project(
     session.refresh(row)
     return project_to_read(
         row,
-        extraction_count=count_extractions_for_project(session, row.id, user_id=user.user_id),
+        extraction_count=count_extractions_for_project(session, row.id, user=user),
     )
 
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: str, session: SessionDep, user: UserDep) -> None:
-    row = _owned_project(session, project_id, user.user_id)
-    # Detach extractions belonging to this user (don't delete them) — losing
-    # the project shouldn't lose work. Other users' extractions are
-    # untouchable here because they couldn't have project_id pointing at
-    # this row in the first place (PATCH validates ownership).
+    row = _owned_project(session, project_id, user)
+    # Detach in-scope extractions (don't delete — losing the project shouldn't
+    # lose work). Out-of-scope extractions can't reference this project anyway
+    # because PATCH validates project ownership against the caller's scope.
     extractions = session.exec(
-        select(Extraction)
-        .where(Extraction.project_id == project_id)
-        .where(Extraction.user_id == user.user_id)
+        apply_scope(select(Extraction), Extraction, user).where(
+            Extraction.project_id == project_id
+        )
     ).all()
     for e in extractions:
         e.project_id = None

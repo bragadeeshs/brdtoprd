@@ -33,6 +33,7 @@ from models import (
     UserSettingsRead,
 )
 from services.byok import decrypt_secret, encrypt_secret, key_preview
+from services.scope import apply_scope
 
 log = logging.getLogger("storyforge.me")
 
@@ -112,19 +113,21 @@ def _month_start(now: datetime) -> datetime:
 
 @router.get("/usage", response_model=UsageSummary)
 def get_usage(session: SessionDep, user: UserDep) -> UsageSummary:
-    """Aggregated usage stats from `usage_log`. Drives the Account-page card."""
+    """Aggregated usage stats from `usage_log`, scoped to the caller's
+    current context (personal or org)."""
     now = datetime.now(timezone.utc)
     month_start = _month_start(now)
 
     def _bucket(*, since: datetime | None) -> UsageBucket:
-        stmt = (
+        stmt = apply_scope(
             select(
                 func.count(UsageLog.id),
                 func.coalesce(func.sum(UsageLog.input_tokens), 0),
                 func.coalesce(func.sum(UsageLog.output_tokens), 0),
                 func.coalesce(func.sum(UsageLog.cost_cents), 0),
-            )
-            .where(UsageLog.user_id == user.user_id)
+            ),
+            UsageLog,
+            user,
         )
         if since is not None:
             stmt = stmt.where(UsageLog.ts >= since)
@@ -137,18 +140,21 @@ def get_usage(session: SessionDep, user: UserDep) -> UsageSummary:
         )
 
     by_model_rows = session.exec(
-        select(
-            UsageLog.model,
-            func.count(UsageLog.id),
-            func.coalesce(func.sum(UsageLog.cost_cents), 0),
+        apply_scope(
+            select(
+                UsageLog.model,
+                func.count(UsageLog.id),
+                func.coalesce(func.sum(UsageLog.cost_cents), 0),
+            ),
+            UsageLog,
+            user,
         )
-        .where(UsageLog.user_id == user.user_id)
         .group_by(UsageLog.model)
         .order_by(func.sum(UsageLog.cost_cents).desc())
     ).all()
 
     last_ts = session.exec(
-        select(func.max(UsageLog.ts)).where(UsageLog.user_id == user.user_id)
+        apply_scope(select(func.max(UsageLog.ts)), UsageLog, user)
     ).one()
 
     return UsageSummary(
@@ -249,15 +255,9 @@ def export_user_data(session: SessionDep, user: UserDep) -> StreamingResponse:
         ├── README.md
         └── uploads/<extraction_id>/<filename>   (only if a source file was saved)
     """
-    extractions = session.exec(
-        select(Extraction).where(Extraction.user_id == user.user_id)
-    ).all()
-    projects = session.exec(
-        select(Project).where(Project.user_id == user.user_id)
-    ).all()
-    usage_logs = session.exec(
-        select(UsageLog).where(UsageLog.user_id == user.user_id)
-    ).all()
+    extractions = session.exec(apply_scope(select(Extraction), Extraction, user)).all()
+    projects = session.exec(apply_scope(select(Project), Project, user)).all()
+    usage_logs = session.exec(apply_scope(select(UsageLog), UsageLog, user)).all()
     extraction_ids = [e.id for e in extractions]
     gap_states = (
         session.exec(

@@ -180,8 +180,9 @@ async def extract(
     # if the request is going to fail validation anyway.
     if project_id:
         from db.models import Project as ProjectModel
+        from services.scope import in_scope
         proj = session.get(ProjectModel, project_id)
-        if proj is None or proj.user_id != user.user_id:
+        if not in_scope(proj, user):
             raise HTTPException(status_code=400, detail="Unknown project_id")
 
     # M3.4.5: pull stored BYOK + model from UserSettings if the request didn't
@@ -215,6 +216,7 @@ async def extract(
         result=result,
         model_used=model_used,
         user_id=user.user_id,
+        org_id=user.org_id,
         project_id=project_id or None,
         extraction_id=extraction_id,
         source_file_path=source_path,
@@ -222,6 +224,7 @@ async def extract(
     record_usage(
         session,
         user_id=user.user_id,
+        org_id=user.org_id,
         extraction_id=row.id,
         action="extract",
         model=model_used,

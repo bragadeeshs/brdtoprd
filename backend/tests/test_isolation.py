@@ -46,8 +46,14 @@ from main import app  # noqa: E402
 
 # --- stubbed identities -----------------------------------------------------
 
+# Personal users (no org context)
 USER_A = CurrentUser(user_id="user_test_aaa")
 USER_B = CurrentUser(user_id="user_test_bbb")
+# Org members (M3.3) — A_IN_ORG is the same person as A but switched into org-X;
+# C_IN_ORG_X is a teammate (different user, same org); D_IN_ORG_Y is a stranger.
+A_IN_ORG_X = CurrentUser(user_id="user_test_aaa", org_id="org_test_xxx")
+C_IN_ORG_X = CurrentUser(user_id="user_test_ccc", org_id="org_test_xxx")
+D_IN_ORG_Y = CurrentUser(user_id="user_test_ddd", org_id="org_test_yyy")
 _active_user: CurrentUser = USER_A
 
 
@@ -191,6 +197,57 @@ def _run_scenarios() -> None:
 
     r = client.get("/api/projects")
     check("A still sees only their own project", r.status_code == 200 and len(r.json()) == 1 and r.json()[0]["id"] == a_project)
+
+    # ========== M3.3 — workspace (org) isolation ==========
+    # Same user A switches into org-X. Personal data must NOT leak into the
+    # org view, and org rows must NOT leak back into A's personal view.
+    as_user(A_IN_ORG_X)
+
+    r = client.get("/api/extractions")
+    check("A-in-org-X sees zero personal-context extractions", r.status_code == 200 and r.json() == [], f"got {r.json() if r.status_code == 200 else r.text}")
+    r = client.get("/api/projects")
+    check("A-in-org-X sees zero personal-context projects", r.status_code == 200 and r.json() == [], f"got {r.json() if r.status_code == 200 else r.text}")
+
+    # A creates a project + extraction inside org-X
+    r = client.post("/api/projects", json={"name": "org-X shared project"})
+    check("A-in-org-X creates a project", r.status_code == 201)
+    org_x_project = r.json()["id"]
+
+    r = client.post(
+        "/api/extract",
+        files={"file": ("org-x.txt", b"workspace doc.", "text/plain")},
+        data={"project_id": org_x_project},
+    )
+    check("A-in-org-X creates extraction in org project", r.status_code == 200)
+    org_x_ext = r.json()["id"]
+
+    # ===== Teammate C in same org sees the same data (workspace = shared) =====
+    as_user(C_IN_ORG_X)
+    extractions_c = client.get("/api/extractions").json()
+    projects_c = client.get("/api/projects").json()
+    check("Teammate C-in-org-X sees A-in-org-X's extraction (workspaces are shared)", any(e["id"] == org_x_ext for e in extractions_c), f"got {[e['id'] for e in extractions_c]}")
+    check("Teammate C-in-org-X sees A-in-org-X's project", any(p["id"] == org_x_project for p in projects_c), f"got {[p['id'] for p in projects_c]}")
+    # And can mutate (free-for-all within an org for now)
+    r = client.patch(f"/api/extractions/{org_x_ext}", json={"filename": "edited-by-c.txt"})
+    check("Teammate C can PATCH org extraction", r.status_code == 200)
+
+    # ===== Stranger D in DIFFERENT org sees nothing =====
+    as_user(D_IN_ORG_Y)
+    check("D-in-org-Y sees zero extractions", client.get("/api/extractions").json() == [])
+    check("D-in-org-Y sees zero projects", client.get("/api/projects").json() == [])
+    r = client.get(f"/api/extractions/{org_x_ext}")
+    check("D-in-org-Y GET org-X extraction -> 404", r.status_code == 404)
+    r = client.delete(f"/api/extractions/{org_x_ext}")
+    check("D-in-org-Y DELETE org-X extraction -> 404", r.status_code == 404)
+    r = client.patch(f"/api/projects/{org_x_project}", json={"name": "stolen"})
+    check("D-in-org-Y PATCH org-X project -> 404", r.status_code == 404)
+
+    # ===== Personal A still doesn't see the org row =====
+    as_user(USER_A)
+    extractions_personal = client.get("/api/extractions").json()
+    check("A-personal still does NOT see org row (personal vs org are separate)", not any(e["id"] == org_x_ext for e in extractions_personal), f"got {[e['id'] for e in extractions_personal]}")
+    r = client.get(f"/api/extractions/{org_x_ext}")
+    check("A-personal GET org-X extraction -> 404 (org context required)", r.status_code == 404)
 
 
 def main() -> int:

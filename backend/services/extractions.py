@@ -122,13 +122,18 @@ def persist_extraction(
     result: ExtractionResult,
     model_used: str,
     user_id: str = "local",
+    org_id: str | None = None,
     project_id: str | None = None,
     extraction_id: str | None = None,
     created_at: datetime | None = None,
     source_file_path: str | None = None,
     root_id: str | None = None,
 ) -> Extraction:
-    """Insert one Extraction row from a fresh ExtractionResult (or import)."""
+    """Insert one Extraction row from a fresh ExtractionResult (or import).
+
+    `org_id` is the *workspace* the row belongs to (M3.3) — None for personal-
+    context calls. `user_id` records the *creator* either way.
+    """
     row = Extraction(
         id=extraction_id or mint_extraction_id(),
         filename=result.filename,
@@ -136,6 +141,7 @@ def persist_extraction(
         model_used=model_used,
         live=result.live,
         user_id=user_id,
+        org_id=org_id,
         project_id=project_id,
         source_file_path=source_file_path,
         root_id=root_id,
@@ -164,27 +170,26 @@ def root_id_for(row: Extraction) -> str:
     return row.root_id or row.id
 
 
-def list_versions(
-    session: Session, extraction_id: str, *, user_id: str
-) -> list[ExtractionVersion]:
-    """All versions of the doc this id belongs to that the user owns, oldest
-    first, 1-indexed.
+def list_versions(session: Session, extraction_id: str, *, user) -> list[ExtractionVersion]:
+    """All versions of the doc this id belongs to that the caller can see.
 
-    Returns [] when `extraction_id` doesn't exist OR when the anchor row
-    belongs to a different user — same response, no existence leak. The
-    same-user filter on the chain query is paranoia: in practice every row
-    in a chain has the same user_id, but defence in depth is cheap here.
+    Scope rules from `services.scope.in_scope` apply: in personal context the
+    chain is filtered to (user_id, org_id IS NULL); in org context to org_id.
+    Returns [] both for missing id and for foreign owner — same response, no
+    existence leak.
     """
+    from services.scope import apply_scope, in_scope  # local import to avoid cycle
+
     anchor = session.get(Extraction, extraction_id)
-    if anchor is None or anchor.user_id != user_id:
+    if not in_scope(anchor, user):
         return []
     root = root_id_for(anchor)
-    rows = session.exec(
-        select(Extraction)
+    stmt = (
+        apply_scope(select(Extraction), Extraction, user)
         .where((Extraction.id == root) | (Extraction.root_id == root))
-        .where(Extraction.user_id == user_id)
         .order_by(Extraction.created_at.asc())
-    ).all()
+    )
+    rows = session.exec(stmt).all()
     return [
         ExtractionVersion(
             id=r.id,
@@ -197,16 +202,16 @@ def list_versions(
     ]
 
 
-def delete_extraction(
-    session: Session, extraction_id: str, *, user_id: str
-) -> bool:
+def delete_extraction(session: Session, extraction_id: str, *, user) -> bool:
     """Delete extraction + cascade its gap states + remove uploaded source.
 
-    Returns True if the row existed AND belonged to `user_id` (404 vs 403 is
-    indistinguishable to keep ownership opaque).
+    Returns True if the row existed AND was in the caller's current scope
+    (M3.3: user vs org). 404 vs 403 stays indistinguishable.
     """
+    from services.scope import in_scope  # local import to avoid cycle
+
     row = session.get(Extraction, extraction_id)
-    if row is None or row.user_id != user_id:
+    if not in_scope(row, user):
         return False
     # Manually delete gap states — no SA cascade configured (kept the schema simple)
     states = session.exec(
@@ -333,18 +338,21 @@ def record_usage(
     session: Session,
     *,
     user_id: str,
+    org_id: str | None,
     extraction_id: str | None,
     action: str,
     model: str,
     live: bool,
     usage: TokenUsage | None,
 ) -> None:
-    """Insert a UsageLog row. No-op only if `usage` is None and we're in mock
-    mode — we still log mock calls (zero cost) so the count is accurate."""
+    """Insert a UsageLog row. Mock calls are still logged (cost=0) so call
+    counts stay accurate. `org_id` records the workspace context — None for
+    personal-context calls — so org-level billing is one query."""
     if usage is None:
         usage = TokenUsage()
     row = UsageLog(
         user_id=user_id,
+        org_id=org_id,
         extraction_id=extraction_id,
         action=action,
         model=model,
@@ -371,14 +379,11 @@ def project_to_read(row: Project, *, extraction_count: int = 0) -> ProjectRead:
     )
 
 
-def count_extractions_for_project(
-    session: Session, project_id: str, *, user_id: str
-) -> int:
-    """Count extractions in a project belonging to the given user."""
-    return len(
-        session.exec(
-            select(Extraction.id)
-            .where(Extraction.project_id == project_id)
-            .where(Extraction.user_id == user_id)
-        ).all()
+def count_extractions_for_project(session: Session, project_id: str, *, user) -> int:
+    """Count extractions in a project visible under the caller's scope."""
+    from services.scope import apply_scope  # local import to avoid cycle
+
+    stmt = apply_scope(select(Extraction.id), Extraction, user).where(
+        Extraction.project_id == project_id
     )
+    return len(session.exec(stmt).all())
