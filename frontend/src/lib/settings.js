@@ -1,38 +1,42 @@
 /**
- * StoryForge — local settings store (M1.4.6 will formalize this).
+ * Frontend-only settings — theme preference.
  *
- * Persists user preferences to localStorage:
- *   - anthropicKey: BYOK API key (sent as X-Anthropic-Key header)
- *   - model:        which Claude model to request (empty = server default)
- *   - theme:        'light' | 'dark' | 'system'
+ * As of M3.4.4 the BYOK Anthropic key + model preference live on the backend
+ * (`/api/me/settings`). Theme stays here because (a) it's UX-only, (b) we
+ * apply it before any auth check fires (otherwise dark-mode users would see
+ * a light-mode flash on every reload), and (c) it doesn't need to follow the
+ * user across browsers.
  *
- * In M3 these move to the backend per-user.
+ * The `getSettings`/`setSettings` shape is preserved as a thin shim so
+ * existing call sites (App.jsx reads `getSettings().theme`) keep working
+ * without changes. BYOK / model fields in those shims are now no-ops.
  */
 
-const KEY = 'storyforge:settings'
+const THEME_KEY = 'storyforge:theme'
 
-const DEFAULTS = {
-  anthropicKey: '',
-  model: '',
-  theme: 'light',
+export function getTheme() {
+  try {
+    return localStorage.getItem(THEME_KEY) || 'light'
+  } catch {
+    return 'light'
+  }
 }
+
+export function setTheme(theme) {
+  try {
+    localStorage.setItem(THEME_KEY, theme)
+  } catch {
+    /* ignore quota / private-mode errors */
+  }
+}
+
+// ---- back-compat shims ----
 
 export function getSettings() {
-  try {
-    const raw = localStorage.getItem(KEY)
-    return { ...DEFAULTS, ...(raw ? JSON.parse(raw) : {}) }
-  } catch {
-    return { ...DEFAULTS }
-  }
+  return { theme: getTheme(), model: '', anthropicKey: '' }
 }
 
-/** Merge a patch into stored settings. Returns the new full object. */
 export function setSettings(patch) {
-  const merged = { ...getSettings(), ...patch }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(merged))
-  } catch {
-    /* quota exceeded — settings object is tiny so this shouldn't happen */
-  }
-  return merged
+  if (patch && typeof patch.theme === 'string') setTheme(patch.theme)
+  // BYOK key + model are server-side now; silently ignore if passed.
 }

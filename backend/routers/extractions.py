@@ -26,6 +26,7 @@ from models import (
     GapStatePatch,
     GapStateRead,
 )
+from services.byok import resolve_user_byok
 from services.extractions import (
     call_claude,
     delete_extraction,
@@ -204,11 +205,15 @@ def rerun_extraction(
     """
     source = _owned_extraction(session, extraction_id, user.user_id)
 
+    # M3.4.5: stored BYOK + model fall through when header omitted.
+    effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
+    effective_model = x_storyforge_model or stored_model
+
     result, model_used, usage = call_claude(
         filename=source.filename,
         raw_text=source.raw_text,
-        api_key=x_anthropic_key,
-        model=x_storyforge_model,
+        api_key=effective_key,
+        model=effective_model,
     )
 
     row = persist_extraction(

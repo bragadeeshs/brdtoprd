@@ -22,7 +22,9 @@ from auth.deps import CurrentUser, current_user
 from db.session import get_session, init_db
 from models import ExtractionRecord
 from routers import extractions as extractions_router
+from routers import me as me_router
 from routers import projects as projects_router
+from services.byok import resolve_user_byok
 from services.extractions import (
     call_claude,
     extraction_to_record,
@@ -54,10 +56,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Router-level auth: every route under /api/extractions and /api/projects
+# Router-level auth: every route under /api/extractions, /api/projects, /api/me
 # requires a verified Clerk session. /api/health stays public for infra probes.
 app.include_router(extractions_router.router, dependencies=[Depends(current_user)])
 app.include_router(projects_router.router, dependencies=[Depends(current_user)])
+app.include_router(me_router.router, dependencies=[Depends(current_user)])
 
 
 def _parse_pdf(data: bytes) -> str:
@@ -181,13 +184,18 @@ async def extract(
         if proj is None or proj.user_id != user.user_id:
             raise HTTPException(status_code=400, detail="Unknown project_id")
 
+    # M3.4.5: pull stored BYOK + model from UserSettings if the request didn't
+    # supply them via header. Header still wins (lets users test a new key).
+    effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
+    effective_model = x_storyforge_model or stored_model
+
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
     result, model_used, usage = call_claude(
         filename=source_name,
         raw_text=raw_text,
-        api_key=x_anthropic_key,
-        model=x_storyforge_model,
+        api_key=effective_key,
+        model=effective_model,
     )
 
     # Mint the id up front so the upload path can reference it before the

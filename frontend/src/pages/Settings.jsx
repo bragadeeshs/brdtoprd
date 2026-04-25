@@ -1,9 +1,8 @@
-import React, { useState } from 'react'
-import { testApiKey } from '../api.js'
-import { getSettings, setSettings } from '../lib/settings.js'
+import React, { useEffect, useState } from 'react'
+import { getMeSettingsApi, putMeSettingsApi, testApiKey } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
-import { Badge, Button, Card, IconTile } from '../components/primitives.jsx'
+import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import { Eye, Monitor, Moon, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
@@ -86,16 +85,25 @@ const MODEL_OPTIONS = [
   },
 ]
 
-function ModelPicker() {
+function ModelPicker({ selected, onChange }) {
   const { toast } = useToast()
-  const [selected, setSelected] = useState(() => getSettings().model)
+  const [busy, setBusy] = useState(false)
 
-  const onSelect = (id) => {
-    if (id === selected) return
-    setSelected(id)
-    setSettings({ model: id })
-    const opt = MODEL_OPTIONS.find((o) => o.id === id)
-    toast.success(`Model set to ${opt.name}`)
+  const onSelect = async (id) => {
+    if (id === selected || busy) return
+    setBusy(true)
+    try {
+      // Server stores `model_default` as null when empty; pass empty string
+      // here and the API client + backend translate it correctly.
+      const next = await putMeSettingsApi({ modelDefault: id || '' })
+      onChange(next.model_default || '')
+      const opt = MODEL_OPTIONS.find((o) => o.id === id)
+      toast.success(`Model set to ${opt.name}`)
+    } catch (e) {
+      toast.error(e.message || 'Could not save model preference')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -279,29 +287,46 @@ function ThemePicker() {
   )
 }
 
-function ApiKeyForm() {
+function ApiKeyForm({ keySet, keyPreview, onSaved }) {
   const { toast } = useToast()
-  const [savedKey, setSavedKey] = useState(() => getSettings().anthropicKey)
-  const [key, setKey] = useState(savedKey)
+  // The raw key is held in component state ONLY while the user is editing.
+  // It is never persisted client-side — Save sends it once to the backend
+  // (which encrypts via Fernet) and we drop it from state.
+  const [key, setKey] = useState('')
   const [shown, setShown] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const dirty = key !== savedKey
-  const hasSavedKey = !!savedKey
   const trimmed = key.trim()
+  const dirty = trimmed.length > 0
 
-  const onSave = () => {
-    setSettings({ anthropicKey: trimmed })
-    setSavedKey(trimmed)
-    setKey(trimmed)
-    toast.success(trimmed ? 'API key saved' : 'API key cleared')
+  const onSave = async () => {
+    if (!trimmed) return
+    setSaving(true)
+    try {
+      const next = await putMeSettingsApi({ anthropicKey: trimmed })
+      onSaved(next)
+      setKey('')  // clear form — server now holds the secret
+      toast.success('API key saved (encrypted server-side)')
+    } catch (e) {
+      toast.error(e.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const onRemove = () => {
-    setSettings({ anthropicKey: '' })
-    setSavedKey('')
-    setKey('')
-    toast.success('API key removed — falling back to server config')
+  const onRemove = async () => {
+    setSaving(true)
+    try {
+      const next = await putMeSettingsApi({ anthropicKey: '' })
+      onSaved(next)
+      setKey('')
+      toast.success('API key removed — falling back to server env key (or mock mode)')
+    } catch (e) {
+      toast.error(e.message || 'Remove failed')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const onTest = async () => {
@@ -337,13 +362,29 @@ function ApiKeyForm() {
             width: 8,
             height: 8,
             borderRadius: 999,
-            background: hasSavedKey ? 'var(--success)' : 'var(--text-soft)',
+            background: keySet ? 'var(--success)' : 'var(--text-soft)',
           }}
         />
         <span style={{ color: 'var(--text-muted)' }}>
-          {hasSavedKey
-            ? 'Active — using your key for extractions'
-            : 'Inactive — using server config (env key or mock mode)'}
+          {keySet ? (
+            <>
+              Active — extractions use your key{' '}
+              {keyPreview && (
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    color: 'var(--text-strong)',
+                    marginLeft: 4,
+                  }}
+                >
+                  ({keyPreview})
+                </span>
+              )}
+            </>
+          ) : (
+            'Inactive — using server config (env key or mock mode)'
+          )}
         </span>
       </div>
 
@@ -364,9 +405,10 @@ function ApiKeyForm() {
           type={shown ? 'text' : 'password'}
           value={key}
           onChange={(e) => setKey(e.target.value)}
-          placeholder="sk-ant-api03-…"
+          placeholder={keySet ? 'Paste a new key to replace the saved one…' : 'sk-ant-api03-…'}
           spellCheck={false}
           autoComplete="off"
+          disabled={saving}
           style={{
             flex: 1,
             height: 38,
@@ -402,14 +444,14 @@ function ApiKeyForm() {
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Button variant="secondary" size="sm" loading={testing} onClick={onTest} disabled={!trimmed}>
+        <Button variant="secondary" size="sm" loading={testing} onClick={onTest} disabled={!trimmed || saving}>
           {testing ? 'Testing…' : 'Test connection'}
         </Button>
-        <Button variant="primary" size="sm" disabled={!dirty} onClick={onSave}>
-          {dirty ? 'Save' : 'Saved'}
+        <Button variant="primary" size="sm" loading={saving} disabled={!dirty || saving} onClick={onSave}>
+          {keySet ? 'Replace' : 'Save'}
         </Button>
-        {hasSavedKey && (
-          <Button variant="ghost" size="sm" onClick={onRemove}>
+        {keySet && (
+          <Button variant="ghost" size="sm" onClick={onRemove} disabled={saving}>
             Remove
           </Button>
         )}
@@ -424,20 +466,8 @@ function ApiKeyForm() {
           lineHeight: 1.55,
         }}
       >
-        Stored in your browser's localStorage and sent on each extraction via the{' '}
-        <code
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10.5,
-            padding: '1px 5px',
-            background: 'var(--bg-subtle)',
-            border: '1px solid var(--border)',
-            borderRadius: 3,
-          }}
-        >
-          X-Anthropic-Key
-        </code>{' '}
-        header. Get a key at{' '}
+        Encrypted server-side with Fernet (AES-128-CBC + HMAC) and decrypted only at extract time.
+        The key never leaves the backend in plaintext after Save. Get a key at{' '}
         <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">
           console.anthropic.com
         </a>
@@ -448,6 +478,25 @@ function ApiKeyForm() {
 }
 
 export default function Settings() {
+  const { toast } = useToast()
+  const [serverSettings, setServerSettings] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // One fetch for both ApiKeyForm + ModelPicker (they live on the same page).
+  // Updates flow back via the `onSaved` / `onChange` props, so we don't need
+  // to refetch after each PUT — the response shape matches GET.
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    setError(null)
+    getMeSettingsApi()
+      .then((s) => { if (alive) setServerSettings(s) })
+      .catch((e) => { if (alive) setError(e.message || 'Failed to load settings') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
   return (
     <div
       style={{
@@ -486,9 +535,21 @@ export default function Settings() {
           icon={<Shield size={16} />}
           tone="info"
           title="API"
-          description="Bring your own Anthropic API key. The key is stored locally in your browser and sent on each extraction request."
+          description="Bring your own Anthropic API key. Encrypted server-side and only decrypted at extract time."
         >
-          <ApiKeyForm />
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+              <Spinner size={14} /> Loading settings…
+            </div>
+          ) : error ? (
+            <div style={{ fontSize: 13, color: 'var(--danger-ink)' }}>{error}</div>
+          ) : (
+            <ApiKeyForm
+              keySet={!!serverSettings?.anthropic_key_set}
+              keyPreview={serverSettings?.anthropic_key_preview || null}
+              onSaved={(s) => setServerSettings(s)}
+            />
+          )}
         </Section>
         <Section
           icon={<Sparkles size={16} />}
@@ -496,7 +557,16 @@ export default function Settings() {
           title="Model"
           description="Choose which Claude model runs your extractions. Pricing is shown per million tokens of input / output."
         >
-          <ModelPicker />
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+              <Spinner size={14} /> Loading…
+            </div>
+          ) : (
+            <ModelPicker
+              selected={serverSettings?.model_default || ''}
+              onChange={(model) => setServerSettings((s) => ({ ...(s || {}), model_default: model || null }))}
+            />
+          )}
         </Section>
         <Section
           icon={<Sun size={16} />}

@@ -21,6 +21,9 @@ import os
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
+from sqlmodel import Session
+
+from db.models import UserSettings
 
 log = logging.getLogger("storyforge.byok")
 
@@ -62,3 +65,39 @@ def decrypt_secret(ciphertext: str) -> str | None:
     except InvalidToken:
         log.warning("decrypt_secret: InvalidToken — key may have rotated")
         return None
+
+
+def key_preview(plaintext: str) -> str:
+    """Public-safe redaction for UI display: `••••<last 4>`. Empty for short keys."""
+    if not plaintext or len(plaintext) < 4:
+        return ""
+    return "••••" + plaintext[-4:]
+
+
+def resolve_user_byok(
+    session: Session, user_id: str, header_override: str | None = None
+) -> tuple[str | None, str | None]:
+    """Pick the effective Anthropic key + model for a request.
+
+    Returns `(api_key, model)`, either of which may be None — extract.py then
+    falls back to env (`ANTHROPIC_API_KEY`, `STORYFORGE_MODEL`) and finally
+    its built-in default.
+
+    Precedence:
+      api_key:  request header > stored UserSettings (decrypted)
+      model:    request header (handled by caller) > stored UserSettings
+
+    The header takes priority so a user can paste a key into "Test connection"
+    and validate it without saving. Once saved, headers can be omitted entirely.
+    """
+    if header_override:
+        # Header path also returns the stored model_default if available, so
+        # users with both header-key + saved model_default get the saved model.
+        row = session.get(UserSettings, user_id)
+        return header_override, (row.model_default if row else None)
+
+    row = session.get(UserSettings, user_id)
+    if row is None:
+        return None, None
+    api_key = decrypt_secret(row.anthropic_key_encrypted) if row.anthropic_key_encrypted else None
+    return api_key, row.model_default

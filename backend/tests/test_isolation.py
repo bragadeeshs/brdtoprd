@@ -25,6 +25,11 @@ from pathlib import Path
 _TMPDIR = Path(tempfile.mkdtemp(prefix="storyforge_test_"))
 os.environ["STORYFORGE_DB"] = str(_TMPDIR / "test.db")
 os.environ["STORYFORGE_UPLOAD_DIR"] = str(_TMPDIR / "uploads")
+# CRITICAL: blank out DATABASE_URL before main.py's load_dotenv runs.
+# load_dotenv (override=False by default) skips vars already set, so an
+# explicit empty string keeps backend/.env's Supabase URL from leaking in
+# and pointing the test at the real Postgres.
+os.environ["DATABASE_URL"] = ""
 # CLERK_PUBLISHABLE_KEY isn't read by our test path (we override current_user)
 # but app import-time module load still needs the env var to be sane.
 os.environ.setdefault("CLERK_PUBLISHABLE_KEY", "pk_test_dummy")

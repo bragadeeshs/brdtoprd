@@ -1,5 +1,3 @@
-import { getSettings } from './lib/settings.js'
-
 /* ------------------------------------------------------------------ */
 /* Token getter — App.jsx populates this on mount via useAuth().getToken.
    Stashed at module scope so the existing api.* functions stay
@@ -11,7 +9,13 @@ export function setTokenGetter(fn) {
 }
 /* ------------------------------------------------------------------ */
 
-/** Build per-request headers: Clerk Bearer + BYOK + model override. */
+/** Build per-request headers — just the Clerk bearer.
+ *
+ *  As of M3.4.5, BYOK key + model_default are stored server-side per user
+ *  and pulled at request time inside the route handlers. The frontend no
+ *  longer needs to ferry them on every call. The single exception is
+ *  `testApiKey` below, which deliberately sends X-Anthropic-Key for a
+ *  one-shot key validation that doesn't touch the saved value. */
 async function authHeaders() {
   const h = {}
   try {
@@ -20,9 +24,6 @@ async function authHeaders() {
   } catch {
     /* getToken can throw on session expiry; let the request proceed and 401 */
   }
-  const { anthropicKey, model } = getSettings()
-  if (anthropicKey) h['X-Anthropic-Key'] = anthropicKey
-  if (model) h['X-Storyforge-Model'] = model
   return h
 }
 
@@ -179,6 +180,34 @@ export async function patchProjectApi(id, patch) {
 
 export async function deleteProjectApi(id) {
   const res = await apiFetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  return jsonOrThrow(res)
+}
+
+// ---------- user settings (M3.4.4) ----------
+
+/** Returns `{anthropic_key_set, anthropic_key_preview, model_default, updated_at}`.
+ *  Never includes the raw key — server only sends the masked tail. */
+export async function getMeSettingsApi() {
+  const res = await apiFetch('/api/me/settings')
+  return jsonOrThrow(res)
+}
+
+/**
+ * PUT /api/me/settings. Field semantics:
+ *   undefined → don't include in body (no change)
+ *   null      → don't include (treated as no change client-side too)
+ *   ""        → clear the field server-side
+ *   string    → set
+ */
+export async function putMeSettingsApi({ anthropicKey, modelDefault } = {}) {
+  const body = {}
+  if (anthropicKey !== undefined && anthropicKey !== null) body.anthropic_key = anthropicKey
+  if (modelDefault !== undefined && modelDefault !== null) body.model_default = modelDefault
+  const res = await apiFetch('/api/me/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
   return jsonOrThrow(res)
 }
 

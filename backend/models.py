@@ -155,6 +155,31 @@ class ProjectPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
 
 
+# ----- User settings (M3.4.4) -----
+
+
+class UserSettingsRead(BaseModel):
+    """Response from GET /api/me/settings.
+
+    Never returns the raw API key — `anthropic_key_set` + `anthropic_key_preview`
+    let the UI render the "Active" badge and the masked tail (e.g. `••••XYZK`)
+    without exposing the secret. The actual decryption happens server-side at
+    extract time.
+    """
+    model_config = ConfigDict(extra="forbid")
+    anthropic_key_set: bool
+    anthropic_key_preview: str | None = None  # last 4 chars of the plaintext key
+    model_default: str | None = None
+    updated_at: datetime | None = None
+
+
+class UserSettingsPatch(BaseModel):
+    """PUT /api/me/settings body. None = no change. "" = clear the field."""
+    model_config = ConfigDict(extra="forbid")
+    anthropic_key: str | None = None
+    model_default: str | None = None
+
+
 # ----- Versions (M2.6) -----
 
 
