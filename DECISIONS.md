@@ -1,6 +1,8 @@
-# StoryForge — Product Decisions (D1–D5)
+# StoryForge — Product Decisions (D1–D6)
 
-> Locked **2026-04-25**. Source of truth for M3.5 (free-tier limits), M3.6 (Stripe SKUs), and any future product/pricing question. Override by adding a new dated entry below; don't silently re-edit the originals.
+> Locked **2026-04-25**. Source of truth for M3.5 (free-tier limits), M3.6 (LSQ subscriptions), and any future product/pricing question. Override by adding a new dated entry below; don't silently re-edit the originals.
+
+> **2026-04-25 update:** D6 added (payment processor — Lemon Squeezy not Stripe). D5 net-revenue table added to reflect LSQ fee absorption. Per-tier margin table updated. M3.6 implementation pivots from Stripe to LSQ; same architectural shape (products + webhooks + customer portal), different SDK.
 
 ---
 
@@ -71,6 +73,53 @@ No "free forever" tier.
 - *Doc size cap* bounds worst-case Anthropic spend per extraction.
 - *Workspace* is the natural upsell — Team's true value is multi-user collaboration, not extraction volume.
 
+### Net revenue after Lemon Squeezy (D6) fees
+
+LSQ takes **5% + $0.50** per transaction. We absorb this rather than passing it through (decided 2026-04-25 — see "Pricing strategy" below).
+
+| Tier | Customer pays | LSQ fee | **Net to us** | % loss |
+|---|---|---|---|---|
+| Starter | $20 | $1.50 | **$18.50** | -7.5% |
+| Pro | $49 | $2.95 | **$46.05** | -6.0% |
+| Team | $99 | $5.45 | **$93.55** | -5.5% |
+
+Annual variants (single transaction per year, so the $0.50 hits once not 12×):
+
+| Tier | Annual gross | LSQ fee | **Net to us** | $/mo equivalent |
+|---|---|---|---|---|
+| Starter annual | $192 | $10.10 | **$181.90** | $15.16 |
+| Pro annual | $470 | $24.00 | **$446.00** | $37.17 |
+| Team annual | $950 | $48.00 | **$902.00** | $75.17 |
+
+### Pricing strategy
+
+**Start low, raise later.** Cleaner narrative now ("under $20 to start"), and we get real customer data before re-pricing. Existing customers grandfathered at the price they signed up at when we eventually raise.
+
+**Trigger conditions to revisit pricing** (any one of):
+1. **Trial→paid conversion < 5%** sustained for 3 months. Means perceived value is too low at this price; raise to anchor higher.
+2. **Net margin per seat < 50%** sustained. Means costs (Anthropic, infra) outran what we baked in. Raise to restore.
+3. **Customer count > 100 paid seats.** We have enough signal to A/B test pricing changes against new signups.
+4. **Direct customer feedback** asking for higher tiers / more usage. Revealed-preference signal that headroom exists above current Pro/Team.
+
+**Most likely raise pattern when triggered:** bump to $25 / $59 / $119 (Option A from the 2026-04-25 conversation), grandfather existing customers at old prices for 12 months, communicate as "small price adjustment to fund new features."
+
+---
+
+## D6 — Payment processor
+
+**Lemon Squeezy** (Merchant of Record). Decided 2026-04-25 because Stripe is invitation-only in India, and as a solo founder selling globally we don't want to handle VAT/GST registration in 100+ jurisdictions ourselves.
+
+**Why MoR (not Razorpay direct):**
+- LSQ invoices the customer, collects + remits VAT/GST in their jurisdiction, handles chargebacks + dunning, settles USD to our Indian bank via SWIFT
+- Razorpay direct is cheaper (~2-3% vs LSQ's 5% + $0.50) but makes us legally responsible for tax compliance in every customer's country — landmine for global SaaS
+- 5% + $0.50 to LSQ = ~$1.50-5.50 per subscription extra cost; a fair price to never think about international tax law
+
+**What customers see:** LSQ-hosted checkout (looks like our brand). Pay via cards, PayPal, Apple/Google Pay, EU local methods (SEPA, iDEAL, etc.) — same UX as Stripe-direct since LSQ uses Stripe + Adyen as backend processors. Customer's card statement shows our business name, not "Lemon Squeezy."
+
+**Subscription mechanics:** LSQ runs the recurring billing, hosts the customer portal (manage card / cancel / invoices), and fires webhooks for `subscription_created` / `_updated` / `_cancelled` / `_payment_failed`. Backend listens and updates `user_settings.plan` accordingly — same shape as Stripe webhook integration would have been.
+
+**Payout cadence:** ~7-14 day rolling hold (chargeback window), then USD payouts to our Indian bank via SWIFT. Optional: route to Wise/Payoneer for cheaper FX vs bank's ~3% conversion markup.
+
 ---
 
 ## Cost-per-extraction (all-in)
@@ -97,20 +146,22 @@ Source: M3.0 UsageLog data + service price sheets, 2026-04-25.
 
 ## Per-tier margins at modest scale
 
-Computed at "average user uses 50% of cap" (typical SaaS assumption — most users don't max out). Worst case shown for sanity.
+Computed at "average user uses 50% of cap" (typical SaaS assumption — most users don't max out). Worst case shown for sanity. **Revenue is post-LSQ net** (the number that actually lands in the bank), not gross.
 
-| Tier | Revenue/seat | Avg usage cost | Avg margin | Worst-case cost (at limit) | Worst-case margin |
+| Tier | Net revenue/seat | Avg usage cost | Avg margin | Worst-case cost (at limit) | Worst-case margin |
 |---|---|---|---|---|---|
 | Trial | $0 | $1 (5 ext used) | -$1 (CAC) | $2 (10 ext) | -$2 |
-| Starter | $20 | $3 (12 ext × $0.26) | **+$17** (85%) | $7 (25 ext) | +$13 (65%) |
-| Pro | $49 | $13 (50 ext × $0.26) | **+$36** (73%) | $30 (100 ext × ~$0.30, mixed Opus) | +$19 (39%) |
-| Team | $99 | $39 (150 ext × $0.26) | **+$60** (61%) | $120 (300 ext × $0.40, all Opus) | -$21 (-21%) |
+| Starter | $18.50 | $3 (12 ext × $0.26) | **+$15.50** (84%) | $7 (25 ext) | +$11.50 (62%) |
+| Pro | $46.05 | $13 (50 ext × $0.26) | **+$33** (72%) | $30 (100 ext × ~$0.30, mixed Opus) | +$16 (35%) |
+| Team | $93.55 | $39 (150 ext × $0.26) | **+$54.55** (58%) | $120 (300 ext × $0.40, all Opus) | -$26.45 (-28%) |
 
 Team's worst-case is negative — heavy Opus users on giant docs can lose money. Mitigations baked in:
 1. Doc-size cap (200k tok, ~100 pages)
 2. Hard extraction cap at 300/mo
 3. Default model = Sonnet; Opus is opt-in per extraction
 4. Most Team users will be 30–60% of cap, well into positive margin
+
+LSQ fee shaved ~$1.50 off Starter, ~$3 off Pro, ~$5.50 off Team. Margins still healthy at avg usage; trigger conditions in D5 ("Pricing strategy") will catch us if reality drifts from assumptions.
 
 ---
 
