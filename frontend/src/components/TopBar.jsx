@@ -116,7 +116,7 @@ function ExportMenu({ extraction, busy }) {
 /* M6.3 — Push menu. Mirrors ExportMenu (same dropdown shape) so users
  * recognize the pattern. Items only render when their callback exists,
  * so a future single-tracker connection still gets a clean menu. */
-function PushMenu({ onPushToJira, onPushToLinear, busy }) {
+function PushMenu({ onPushToJira, onPushToLinear, onPushToGitHub, busy }) {
   const [open, setOpen] = useState(false)
   const popRef = React.useRef(null)
   const btnRef = React.useRef(null)
@@ -174,6 +174,9 @@ function PushMenu({ onPushToJira, onPushToLinear, busy }) {
           )}
           {typeof onPushToLinear === 'function' && (
             <ExportMenuItem onClick={fire(onPushToLinear)} title="Linear" hint="One issue per story" />
+          )}
+          {typeof onPushToGitHub === 'function' && (
+            <ExportMenuItem onClick={fire(onPushToGitHub)} title="GitHub Issues" hint="Criteria as task list" />
           )}
         </div>
       )}
@@ -356,6 +359,7 @@ export default function TopBar({
   onShare,
   onPushToJira,
   onPushToLinear,
+  onPushToGitHub,
 }) {
   const [versions, setVersions] = useState([])
 
@@ -473,8 +477,13 @@ export default function TopBar({
               Share
             </Button>
           )}
-          {(typeof onPushToJira === 'function' || typeof onPushToLinear === 'function') && (
-            <PushMenu onPushToJira={onPushToJira} onPushToLinear={onPushToLinear} busy={loading || rerunning} />
+          {(typeof onPushToJira === 'function' || typeof onPushToLinear === 'function' || typeof onPushToGitHub === 'function') && (
+            <PushMenu
+              onPushToJira={onPushToJira}
+              onPushToLinear={onPushToLinear}
+              onPushToGitHub={onPushToGitHub}
+              busy={loading || rerunning}
+            />
           )}
           <ExportMenu extraction={extraction} busy={loading || rerunning} />
         </>

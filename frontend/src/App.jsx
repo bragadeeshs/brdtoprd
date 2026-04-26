@@ -10,6 +10,7 @@ import { useToast } from './components/Toast.jsx'
 import ShareModal from './components/ShareModal.jsx'
 import PushToJiraModal from './components/PushToJiraModal.jsx'
 import PushToLinearModal from './components/PushToLinearModal.jsx'
+import PushToGitHubModal from './components/PushToGitHubModal.jsx'
 import { setSentryUser } from './lib/sentry.js'
 import { identifyUser, track } from './lib/analytics.js'
 import Account from './pages/Account.jsx'
@@ -493,6 +494,8 @@ function AuthedApp() {
   const [pushJiraOpen, setPushJiraOpen] = useState(false)
   // M6.3 — push-to-Linear modal toggle. Parallel to Jira.
   const [pushLinearOpen, setPushLinearOpen] = useState(false)
+  // M6.4 — push-to-GitHub modal toggle. Same pattern.
+  const [pushGitHubOpen, setPushGitHubOpen] = useState(false)
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -603,6 +606,7 @@ function AuthedApp() {
           onShare={extractionId ? () => setShareOpen(true) : undefined}
           onPushToJira={extractionId ? () => setPushJiraOpen(true) : undefined}
           onPushToLinear={extractionId ? () => setPushLinearOpen(true) : undefined}
+          onPushToGitHub={extractionId ? () => setPushGitHubOpen(true) : undefined}
         />
         <Routes>
           <Route
@@ -666,6 +670,9 @@ function AuthedApp() {
       )}
       {pushLinearOpen && extraction && (
         <PushToLinearModal extraction={extraction} onClose={() => setPushLinearOpen(false)} />
+      )}
+      {pushGitHubOpen && extraction && (
+        <PushToGitHubModal extraction={extraction} onClose={() => setPushGitHubOpen(false)} />
       )}
     </div>
     </AppProvider>

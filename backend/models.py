@@ -473,3 +473,43 @@ class PushToLinearResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pushed: list[PushedIssue]
     failed: list[dict]
+
+
+# ----- Integrations (M6.4 — GitHub Issues) -----
+
+
+class GitHubConnectionRead(BaseModel):
+    """GitHub connection metadata. PAT preview only — never the raw token."""
+    model_config = ConfigDict(extra="forbid")
+    api_token_preview: str       # ••••XYZK
+    default_repo: str | None = None      # "owner/name" form
+    created_at: datetime
+    updated_at: datetime
+
+
+class GitHubConnectionWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    api_token: str       # PAT from github.com/settings/tokens (`repo` scope)
+    default_repo: str | None = None
+
+
+class GitHubRepo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    full_name: str       # "owner/name" — used as the picker value
+    owner: str
+    name: str
+    private: bool = False
+
+
+class PushToGitHubRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    owner: str
+    repo: str
+
+
+class PushToGitHubResult(BaseModel):
+    """Same shape as the other push results. issue_key uses the GitHub
+    convention `owner/repo#42` so it's globally unique in the result UI."""
+    model_config = ConfigDict(extra="forbid")
+    pushed: list[PushedIssue]
+    failed: list[dict]

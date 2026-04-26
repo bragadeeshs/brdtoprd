@@ -363,6 +363,45 @@ export async function pushToLinearApi(extractionId, { team_id }) {
   return jsonOrThrow(res)
 }
 
+// ---------- integrations: GitHub Issues (M6.4) ----------
+
+export async function getGitHubConnectionApi() {
+  const res = await apiFetch('/api/integrations/github/connection')
+  return jsonOrThrow(res)
+}
+
+/** Save / replace. Body: {api_token, default_repo?}. */
+export async function putGitHubConnectionApi(body) {
+  const res = await apiFetch('/api/integrations/github/connection', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+export async function deleteGitHubConnectionApi() {
+  const res = await apiFetch('/api/integrations/github/connection', { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
+/** First 100 repos sorted by recent activity. Doubles as test-connection probe. */
+export async function listGitHubReposApi() {
+  const res = await apiFetch('/api/integrations/github/repos')
+  return jsonOrThrow(res)
+}
+
+/** Push every story as a GitHub issue. issue_key uses `owner/repo#N`. */
+export async function pushToGitHubApi(extractionId, { owner, repo }) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/github`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ owner, repo }),
+  })
+  return jsonOrThrow(res)
+}
+
 // ---------- comments (M4.5) ----------
 
 /** All comments on an extraction. Oldest first. */

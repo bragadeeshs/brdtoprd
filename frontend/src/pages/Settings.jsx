@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import {
+  deleteGitHubConnectionApi,
   deleteJiraConnectionApi,
   deleteLinearConnectionApi,
+  getGitHubConnectionApi,
   getJiraConnectionApi,
   getLinearConnectionApi,
   getMeSettingsApi,
+  listGitHubReposApi,
   listJiraProjectsApi,
   listLinearTeamsApi,
+  putGitHubConnectionApi,
   putJiraConnectionApi,
   putLinearConnectionApi,
   putMeSettingsApi,
@@ -790,6 +794,136 @@ function LinearConnectionForm() {
   )
 }
 
+/* M6.4 — GitHub connection form. Mirrors Linear's (single PAT input;
+ * GitHub's PAT carries scope so no URL/owner needed at save time —
+ * the repo picker comes at push time). */
+function GitHubConnectionForm() {
+  const { toast } = useToast()
+  const [conn, setConn] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [token, setToken] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    getGitHubConnectionApi()
+      .then((c) => { if (alive) setConn(c) })
+      .catch((e) => { if (alive) toast.error(e.message || 'Could not load GitHub connection') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const startEdit = () => { setToken(''); setEditing(true) }
+  const cancelEdit = () => { setEditing(false); setToken('') }
+
+  const save = async () => {
+    if (!token.trim()) {
+      toast.error('Token required')
+      return
+    }
+    setBusy(true)
+    try {
+      const c = await putGitHubConnectionApi({ api_token: token.trim() })
+      setConn(c)
+      setEditing(false)
+      setToken('')
+      toast.success('GitHub connection saved')
+    } catch (e) {
+      toast.error(e.message || 'Could not save GitHub connection')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const test = async () => {
+    setBusy(true)
+    try {
+      const repos = await listGitHubReposApi()
+      toast.success(`Connection OK — ${repos.length} repo${repos.length === 1 ? '' : 's'} visible`)
+    } catch (e) {
+      toast.error(e.message || 'Connection test failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect GitHub? You can reconnect any time.')) return
+    setBusy(true)
+    try {
+      await deleteGitHubConnectionApi()
+      setConn(null)
+      toast.success('GitHub disconnected')
+    } catch (e) {
+      toast.error(e.message || 'Could not disconnect')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading GitHub connection…
+      </div>
+    )
+  }
+
+  if (conn && !editing) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
+          <div style={{ color: 'var(--text-soft)' }}>Token</div>
+          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{conn.api_token_preview}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <Button variant="secondary" size="sm" onClick={test} disabled={busy}>
+            {busy ? 'Testing…' : 'Test'}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={startEdit} disabled={busy}>Edit</Button>
+          <Button variant="ghost" size="sm" onClick={disconnect} disabled={busy}>Disconnect</Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Generate a personal access token at{' '}
+        <a
+          href="https://github.com/settings/tokens"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--accent-strong)' }}
+        >
+          github.com → Settings → Tokens
+        </a>
+        {' '}with the <code style={{ fontSize: 11.5 }}>repo</code> scope. The token is encrypted before storage.
+      </p>
+      <FieldLabel>Personal access token</FieldLabel>
+      <input
+        type="password"
+        placeholder="ghp_…"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
+        </Button>
+        {(conn || editing) && (
+          <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={busy}>Cancel</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function FieldLabel({ children }) {
   return (
     <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-soft)' }}>
@@ -923,6 +1057,14 @@ export default function Settings() {
           description="Push extracted user stories into a Linear team. One issue per story; criteria as a markdown checklist in the description."
         >
           <LinearConnectionForm />
+        </Section>
+        <Section
+          icon={<Plug size={16} />}
+          tone="info"
+          title="Integrations · GitHub Issues"
+          description="Push extracted user stories into a GitHub repo as issues. Criteria render as a clickable task list in each issue body."
+        >
+          <GitHubConnectionForm />
         </Section>
       </div>
     </div>

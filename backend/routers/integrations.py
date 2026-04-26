@@ -29,18 +29,24 @@ from auth.deps import CurrentUser, current_user
 from db.models import Extraction, IntegrationConnection
 from db.session import get_session
 from models import (
+    GitHubConnectionRead,
+    GitHubConnectionWrite,
+    GitHubRepo,
     JiraConnectionRead,
     JiraConnectionWrite,
     JiraProject,
     LinearConnectionRead,
     LinearConnectionWrite,
     LinearTeam,
+    PushToGitHubRequest,
+    PushToGitHubResult,
     PushToJiraRequest,
     PushToJiraResult,
     PushToLinearRequest,
     PushToLinearResult,
 )
 from services.byok import decrypt_secret, encrypt_secret, key_preview
+from services.github import GitHubClient, push_extraction as push_extraction_github
 from services.jira import JiraClient, push_extraction as push_extraction_jira
 from services.linear import LinearClient, push_extraction as push_extraction_linear
 from services.scope import in_scope
@@ -313,4 +319,115 @@ def push_to_linear(
         client,
         extraction,
         team_id=payload.team_id,
+    )
+
+
+# ---- GitHub connection (M6.4) ---------------------------------------------
+
+
+def _decrypt_github_config(row: IntegrationConnection) -> dict:
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("api_token_encrypted")
+    token = decrypt_secret(enc) if enc else None
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="Saved GitHub token is unreadable (master key may have rotated). Reconnect in Settings.",
+        )
+    cfg["api_token"] = token
+    cfg.pop("api_token_encrypted", None)
+    return cfg
+
+
+def _to_github_read(row: IntegrationConnection) -> GitHubConnectionRead:
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("api_token_encrypted")
+    plain = decrypt_secret(enc) if enc else ""
+    return GitHubConnectionRead(
+        api_token_preview=key_preview(plain or ""),
+        default_repo=cfg.get("default_repo"),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/api/integrations/github/connection", response_model=GitHubConnectionRead | None)
+def get_github_connection(session: SessionDep, user: UserDep):
+    row = _get_connection(session, user, "github")
+    return _to_github_read(row) if row else None
+
+
+@router.put("/api/integrations/github/connection", response_model=GitHubConnectionRead)
+def put_github_connection(payload: GitHubConnectionWrite, session: SessionDep, user: UserDep):
+    cfg = {
+        "api_token_encrypted": encrypt_secret((payload.api_token or "").strip()),
+        "default_repo": (payload.default_repo or None),
+    }
+    now = datetime.now(timezone.utc)
+
+    row = _get_connection(session, user, "github")
+    if row is None:
+        row = IntegrationConnection(
+            scope="user",
+            scope_id=user.user_id,
+            kind="github",
+            config_json=json.dumps(cfg),
+            created_at=now,
+            updated_at=now,
+        )
+    else:
+        row.config_json = json.dumps(cfg)
+        row.updated_at = now
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_github_read(row)
+
+
+@router.delete("/api/integrations/github/connection", status_code=204)
+def delete_github_connection(session: SessionDep, user: UserDep) -> None:
+    row = _get_connection(session, user, "github")
+    if row is None:
+        return
+    session.delete(row)
+    session.commit()
+
+
+@router.get("/api/integrations/github/repos", response_model=list[GitHubRepo])
+def list_github_repos(session: SessionDep, user: UserDep):
+    """Live fetch — doubles as the test-connection probe. First 100 repos
+    sorted by recent activity (no pagination — see services/github.py)."""
+    row = _get_connection(session, user, "github")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No GitHub connection saved. Connect in Settings.")
+    cfg = _decrypt_github_config(row)
+    client = GitHubClient(api_token=cfg["api_token"])
+    return client.list_repos()
+
+
+@router.post("/api/extractions/{extraction_id}/push/github", response_model=PushToGitHubResult)
+def push_to_github(
+    extraction_id: str,
+    payload: PushToGitHubRequest,
+    session: SessionDep,
+    user: UserDep,
+) -> PushToGitHubResult:
+    extraction = session.get(Extraction, extraction_id)
+    if not in_scope(extraction, user):
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    row = _get_connection(session, user, "github")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No GitHub connection saved. Connect in Settings.")
+    cfg = _decrypt_github_config(row)
+    client = GitHubClient(api_token=cfg["api_token"])
+
+    if not (extraction.stories or []):
+        raise HTTPException(status_code=400, detail="No stories to push.")
+
+    return push_extraction_github(
+        client,
+        extraction,
+        owner=payload.owner,
+        repo=payload.repo,
     )
