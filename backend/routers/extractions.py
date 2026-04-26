@@ -20,6 +20,7 @@ from models import (
     ExtractionImport,
     ExtractionPatch,
     ExtractionRecord,
+    ExtractionRegenRequest,
     ExtractionRerunRequest,
     ExtractionSummary,
     ExtractionVersion,
@@ -39,6 +40,7 @@ from services.extractions import (
     root_id_for,
 )
 from services.limits import enforce_limits
+from services.regen import regen_section
 from services.scope import apply_scope, in_scope
 
 log = logging.getLogger("storyforge.extractions")
@@ -271,6 +273,72 @@ def rerun_extraction(
         action="rerun",
         model=model_used,
         live=result.live,
+        usage=usage,
+    )
+    return extraction_to_record(row)
+
+
+# ---------------- regen one section (M4.4) ----------------
+
+
+@router.post("/{extraction_id}/regen", response_model=ExtractionRecord)
+def regen_extraction_section(
+    extraction_id: str,
+    payload: ExtractionRegenRequest,
+    session: SessionDep,
+    user: UserDep,
+    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
+    x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
+) -> ExtractionRecord:
+    """Regenerate one section (stories / nfrs / gaps) on the same row.
+
+    Counts as one Claude call against the user's monthly quota — same as
+    rerun. The other sections + brief + actors are passed to the model as
+    *stable context* so the regen respects the user's M4.1 inline edits.
+
+    No new extraction row is created (unlike `/rerun`); the existing row's
+    JSON column for the target section is replaced in place. Versioning
+    semantics: regen is treated as a refinement of the same logical
+    extraction, not a fork. Use `/rerun` if you want a snapshot.
+    """
+    row = _owned_extraction(session, extraction_id, user)
+
+    effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
+    effective_model = x_storyforge_model or stored_model
+
+    # Same plan gates as /api/extract — regen is a paid Claude call.
+    enforce_limits(session, user, raw_text=row.raw_text or "", model=effective_model)
+
+    new_items, model_used, usage = regen_section(
+        section=payload.section,
+        filename=row.filename,
+        raw_text=row.raw_text or "",
+        brief=row.brief or {},
+        actors=row.actors or [],
+        stories=row.stories or [],
+        nfrs=row.nfrs or [],
+        gaps=row.gaps or [],
+        api_key=effective_key,
+        model=effective_model,
+    )
+
+    # Write back. Use setattr because the section name comes from a Literal
+    # — the type checker is happy with str access on the SQLModel attrs.
+    setattr(row, payload.section, new_items)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    # Record the call. live=True when api_key was set; mock-mode regen is
+    # a no-op return of the current data, no Claude charge.
+    record_usage(
+        session,
+        user_id=user.user_id,
+        org_id=user.org_id,
+        extraction_id=row.id,
+        action=f"regen_{payload.section}",
+        model=model_used,
+        live=usage is not None,
         usage=usage,
     )
     return extraction_to_record(row)

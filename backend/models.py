@@ -312,3 +312,13 @@ class ExtractionRerunRequest(BaseModel):
     """POST /api/extractions/{id}/rerun body — all fields optional."""
     model_config = ConfigDict(extra="forbid")
     # Future: per-request system prompt overrides go here.
+
+
+class ExtractionRegenRequest(BaseModel):
+    """POST /api/extractions/{id}/regen body (M4.4)."""
+    model_config = ConfigDict(extra="forbid")
+    # The section name is also a path segment; we keep it in the body so the
+    # frontend doesn't need three endpoints. Validation matches services.regen
+    # — only stories / nfrs / gaps are regenerable; brief + actors are short
+    # enough to edit inline (M4.1).
+    section: Literal["stories", "nfrs", "gaps"]

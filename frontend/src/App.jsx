@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization } from '@clerk/clerk-react'
-import { extractStream, getMePlanApi, listProjectsApi, patchExtractionApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extractStream, getMePlanApi, listProjectsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -379,6 +379,29 @@ function AuthedApp() {
     }
   }
 
+  // M4.4 — regenerate one section (stories / nfrs / gaps). The backend
+  // sends the brief + actors + other sections to the model as stable
+  // context, so any inline edits (M4.1) are respected. `regenBusy` is the
+  // section name in flight (or null) so each section can show its own
+  // spinner without blocking edits elsewhere.
+  const [regenBusy, setRegenBusy] = useState(null)
+  const handleRegenSection = async (section) => {
+    if (!extractionId || regenBusy) return
+    if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
+    setRegenBusy(section)
+    try {
+      const updated = await regenSectionApi(extractionId, section)
+      setExtraction(updated)
+      refreshPlan()
+      toast.success(`${section} regenerated`)
+    } catch (e) {
+      if (e.paywall) setPaywall(e.paywall)
+      else toast.error(e.message || 'Regen failed')
+    } finally {
+      setRegenBusy(null)
+    }
+  }
+
   // Documents page passes a summary row; hydrate the full record from the API
   // before opening the studio so brief/actors/stories/nfrs/gaps are present.
   const restoreExtraction = async (rowOrRecord) => {
@@ -485,6 +508,8 @@ function AuthedApp() {
                       extraction={extraction}
                       onPickQuote={pickQuote}
                       onUpdate={updateExtraction}
+                      onRegenSection={handleRegenSection}
+                      regenBusy={regenBusy}
                     />
                   </div>
                 )}
@@ -506,6 +531,8 @@ function AuthedApp() {
           extractionId={extractionId}
           onPickQuote={pickQuote}
           onUpdate={(nextGaps) => updateExtraction({ gaps: nextGaps })}
+          onRegen={() => handleRegenSection('gaps')}
+          regenBusy={regenBusy === 'gaps'}
         />
       )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />

@@ -4,6 +4,7 @@ import { copyToClipboard } from '../lib/clipboard.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
 import { EditableSelect, EditableText, EditableTextarea } from './Editable.jsx'
+import { RegenButton } from './ArtifactsPane.jsx'
 import {
   AlertCircle,
   AlertTriangle,
@@ -320,7 +321,7 @@ const SEVERITY_FILTERS = [
   { id: 'low', label: 'Low' },
 ]
 
-export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate }) {
+export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate, onRegen, regenBusy }) {
   // M4.1 — gap-level edits. Each card edits its own slot; we hand back the
   // full new gaps array to the parent's onUpdate callback (App.jsx wraps it
   // into a {gaps: ...} PATCH).
@@ -473,7 +474,7 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
           <IconTile tone="warn" size={32}>
             <AlertTriangle size={15} />
           </IconTile>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
                 fontFamily: 'var(--font-display)',
@@ -512,6 +513,9 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
               </span>
             </div>
           </div>
+          {typeof onRegen === 'function' && (
+            <RegenButton onClick={onRegen} busy={!!regenBusy} />
+          )}
         </div>
       </div>
 

@@ -189,6 +189,19 @@ export async function rerunExtractionApi(id) {
   return jsonOrThrow(res)
 }
 
+/** Regenerate one section (stories / nfrs / gaps) on the same row.
+ *  Returns the updated full ExtractionRecord. The other sections + brief
+ *  + actors stay as the user has them — the model treats them as stable
+ *  context (M4.4). Counts as one Claude call against the user's quota. */
+export async function regenSectionApi(id, section) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/regen`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ section }),
+  })
+  return jsonOrThrow(res)
+}
+
 /** All versions in this extraction's chain. Oldest first, 1-indexed. */
 export async function listVersionsApi(id) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/versions`)

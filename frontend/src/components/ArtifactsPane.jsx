@@ -370,7 +370,7 @@ const SECTIONS = [
   { id: 'nfrs', label: 'NFRs' },
 ]
 
-export default function ArtifactsPane({ extraction, onPickQuote, onUpdate }) {
+export default function ArtifactsPane({ extraction, onPickQuote, onUpdate, onRegenSection, regenBusy }) {
   // Per-artifact callbacks: each takes the new piece + applies to the
   // corresponding array, then calls the parent's onUpdate({field: ...}).
   const editable = typeof onUpdate === 'function'
@@ -691,6 +691,15 @@ export default function ArtifactsPane({ extraction, onPickQuote, onUpdate }) {
           tone="purple"
           title="User stories"
           count={extraction.stories.length}
+          action={
+            typeof onRegenSection === 'function' && (
+              <RegenButton
+                onClick={() => onRegenSection('stories')}
+                busy={regenBusy === 'stories'}
+                disabled={!!regenBusy}
+              />
+            )
+          }
         />
         {extraction.stories.length ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -719,6 +728,15 @@ export default function ArtifactsPane({ extraction, onPickQuote, onUpdate }) {
           tone="success"
           title="Non-functional requirements"
           count={extraction.nfrs.length}
+          action={
+            typeof onRegenSection === 'function' && (
+              <RegenButton
+                onClick={() => onRegenSection('nfrs')}
+                busy={regenBusy === 'nfrs'}
+                disabled={!!regenBusy}
+              />
+            )
+          }
         />
         {extraction.nfrs.length ? (
           <Card padding={0} style={{ overflow: 'hidden' }}>
@@ -845,6 +863,46 @@ export default function ArtifactsPane({ extraction, onPickQuote, onUpdate }) {
         {editable && <AddArtifactButton label="+ Add NFR" onClick={addNfr} />}
       </div>
     </section>
+  )
+}
+
+/* M4.4 — "Regen" button rendered in the section header's action slot.
+ * Disabled + spinner-labeled while a regen is in flight (any section — we
+ * disable all of them while one runs to keep the UI honest about cost). */
+export function RegenButton({ onClick, busy = false, disabled = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy || disabled}
+      title="Ask Claude to redraft this section using your edits as context"
+      style={{
+        background: busy ? 'var(--bg-hover)' : 'transparent',
+        border: '1px solid var(--border-strong)',
+        borderRadius: 'var(--radius-pill)',
+        color: busy ? 'var(--text-muted)' : 'var(--accent-strong)',
+        cursor: busy || disabled ? 'wait' : 'pointer',
+        fontSize: 11.5,
+        fontWeight: 500,
+        padding: '4px 10px',
+        fontFamily: 'inherit',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+      }}
+      onMouseEnter={(e) => {
+        if (busy || disabled) return
+        e.currentTarget.style.background = 'var(--accent-soft)'
+        e.currentTarget.style.borderColor = 'var(--accent)'
+      }}
+      onMouseLeave={(e) => {
+        if (busy || disabled) return
+        e.currentTarget.style.background = 'transparent'
+        e.currentTarget.style.borderColor = 'var(--border-strong)'
+      }}
+    >
+      {busy ? '⟳ Regenerating…' : '↻ Regen'}
+    </button>
   )
 }
 
