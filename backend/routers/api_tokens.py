@@ -42,6 +42,7 @@ def _to_read(row: ApiToken) -> ApiTokenRead:
         name=row.name,
         prefix=row.prefix,
         last4=row.last4,
+        scope=row.scope or "rw",
         org_id=row.org_id,
         created_at=row.created_at,
         last_used_at=row.last_used_at,
@@ -84,6 +85,10 @@ def create_token(
     if len(name) > 100:
         raise HTTPException(status_code=400, detail="name too long (max 100 chars)")
 
+    scope = (payload.scope or "rw").lower()
+    if scope not in ("rw", "ro"):
+        raise HTTPException(status_code=400, detail="scope must be 'rw' or 'ro'")
+
     minted = mint_token()
     row = ApiToken(
         id=_mint_id("tok"),
@@ -93,6 +98,7 @@ def create_token(
         token_hash=minted["hash"],
         user_id=user.user_id,
         org_id=user.org_id,
+        scope=scope,
     )
     session.add(row)
     session.commit()
@@ -103,6 +109,7 @@ def create_token(
         token=minted["plaintext"],
         prefix=row.prefix,
         last4=row.last4,
+        scope=row.scope or "rw",
         org_id=row.org_id,
         created_at=row.created_at,
     )

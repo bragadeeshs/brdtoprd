@@ -676,9 +676,15 @@ class PushToNotionResult(BaseModel):
 
 
 class ApiTokenCreateRequest(BaseModel):
-    """POST /api/me/api-tokens body. Just a label."""
+    """POST /api/me/api-tokens body.
+
+    M6.7.b: `scope` picks 'rw' (default — full SPA parity) or 'ro' (read-
+    only — only GET/HEAD/OPTIONS are accepted; everything else 403s).
+    Scope is immutable on a token; rotate to a new token to change it.
+    """
     model_config = ConfigDict(extra="forbid")
-    name: str   # e.g. "production-pipeline", "zapier-bot"
+    name: str                      # e.g. "production-pipeline", "zapier-bot"
+    scope: Literal["rw", "ro"] = "rw"
 
 
 class ApiTokenCreateResponse(BaseModel):
@@ -690,6 +696,7 @@ class ApiTokenCreateResponse(BaseModel):
     token: str          # plaintext — shown exactly once
     prefix: str
     last4: str
+    scope: Literal["rw", "ro"] = "rw"
     org_id: str | None = None
     created_at: datetime
 
@@ -774,6 +781,7 @@ class ApiTokenRead(BaseModel):
     name: str
     prefix: str
     last4: str
+    scope: Literal["rw", "ro"] = "rw"   # M6.7.b
     org_id: str | None = None
     created_at: datetime
     last_used_at: datetime | None = None

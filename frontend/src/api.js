@@ -673,13 +673,13 @@ export async function listApiTokensApi() {
 }
 
 /** Create a new API token. Response carries the plaintext ONCE — frontend
- *  must surface a "save this now — you won't see it again" UX. Returns
- *  {id, name, token, prefix, last4, org_id, created_at}. */
-export async function createApiTokenApi(name) {
+ *  must surface a "save this now — you won't see it again" UX.
+ *  M6.7.b: `scope` is 'rw' (default, full access) or 'ro' (GET-only). */
+export async function createApiTokenApi({ name, scope = 'rw' }) {
   const res = await apiFetch('/api/me/api-tokens', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, scope }),
   })
   return jsonOrThrow(res)
 }

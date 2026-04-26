@@ -180,6 +180,20 @@ def _apply_soft_migrations() -> None:
             conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN prompt_suffix TEXT")
             conn.commit()
 
+        # ---- api_token ----
+        try:
+            tok_cols = _columns("api_token")
+        except Exception:
+            tok_cols = set()   # table not yet created on first boot — create_all handles it
+        if tok_cols and "scope" not in tok_cols:
+            log.info("migrating: adding api_token.scope (M6.7.b)")
+            # Both SQLite + Postgres accept the DEFAULT clause; existing
+            # tokens get the safe 'rw' default so nothing changes for them.
+            conn.exec_driver_sql(
+                "ALTER TABLE api_token ADD COLUMN scope VARCHAR NOT NULL DEFAULT 'rw'"
+            )
+            conn.commit()
+
 
 def get_session() -> Generator[Session, None, None]:
     """FastAPI dependency: yields a session that auto-closes after the request."""

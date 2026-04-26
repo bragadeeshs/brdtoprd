@@ -1774,6 +1774,7 @@ function ApiTokensSection() {
   const [tokens, setTokens] = useState(null)        // null=loading, []=empty, [...]=loaded
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  const [scope, setScope] = useState('rw')          // M6.7.b — 'rw' or 'ro'
   const [revealed, setRevealed] = useState(null)    // freshly-minted token (plaintext) or null
 
   const refresh = async () => {
@@ -1792,9 +1793,10 @@ function ApiTokensSection() {
     if (!name.trim() || creating) return
     setCreating(true)
     try {
-      const r = await createApiTokenApi(name.trim())
+      const r = await createApiTokenApi({ name: name.trim(), scope })
       setRevealed(r)
       setName('')
+      setScope('rw')
       await refresh()
     } catch (e) {
       toast.error(e.message || 'Could not create token')
@@ -1858,21 +1860,40 @@ function ApiTokensSection() {
 
       {/* Create form — hidden while a freshly-minted token is on screen
        *  to prevent the user from creating another one before saving the
-       *  first. */}
+       *  first. M6.7.b: scope picker defaults to 'rw' so the existing
+       *  curl-and-extract flow doesn't change. */}
       {!revealed && (
-        <form onSubmit={create} style={{ display: 'flex', gap: 6 }}>
-          <input
-            type="text"
-            placeholder="Token name (e.g. production-pipeline)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={creating}
-            maxLength={100}
-            style={{ ...inputStyle, flex: 1 }}
-          />
-          <Button variant="primary" size="sm" type="submit" disabled={creating || !name.trim()}>
-            {creating ? 'Creating…' : 'Create token'}
-          </Button>
+        <form onSubmit={create} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="text"
+              placeholder="Token name (e.g. production-pipeline)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={creating}
+              maxLength={100}
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+              disabled={creating}
+              style={{ ...inputStyle, width: 130 }}
+              title="Scope: read/write or read-only"
+            >
+              <option value="rw">Read/write</option>
+              <option value="ro">Read-only</option>
+            </select>
+            <Button variant="primary" size="sm" type="submit" disabled={creating || !name.trim()}>
+              {creating ? 'Creating…' : 'Create token'}
+            </Button>
+          </div>
+          {scope === 'ro' && (
+            <div style={{ fontSize: 11.5, color: 'var(--text-soft)', marginLeft: 2 }}>
+              Read-only tokens can only call GET endpoints — useful for read-only
+              integrations (dashboards, exports) that don't need to mutate data.
+            </div>
+          )}
         </form>
       )}
 
@@ -1932,6 +1953,7 @@ function ApiTokensSection() {
 
 function TokenRow({ token, isLast, onRevoke }) {
   const isRevoked = !!token.revoked_at
+  const isReadOnly = (token.scope || 'rw') === 'ro'
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
@@ -1954,6 +1976,11 @@ function TokenRow({ token, isLast, onRevoke }) {
           {token.last_used_at && ` · last used ${new Date(token.last_used_at).toLocaleDateString()}`}
         </div>
       </div>
+      {/* M6.7.b — scope badge always visible (rw or ro) so users can tell
+          tokens apart at a glance without opening the create form. */}
+      <Badge tone={isReadOnly ? 'info' : 'neutral'} size="sm">
+        {isReadOnly ? 'Read-only' : 'Read/write'}
+      </Badge>
       {isRevoked ? (
         <Badge tone="danger" size="sm">Revoked</Badge>
       ) : (

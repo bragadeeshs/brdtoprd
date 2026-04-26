@@ -197,6 +197,11 @@ class ApiToken(SQLModel, table=True):
     token_hash: str = Field(index=True)       # SHA-256 of plaintext, hex; lookup key on auth
     user_id: str = Field(index=True)
     org_id: str | None = Field(default=None, index=True)
+    # M6.7.b — token scope. 'rw' (default, full read/write parity with Clerk
+    # sessions) or 'ro' (GET/HEAD/OPTIONS only — non-safe methods return 403
+    # via `enforce_token_scope` in main.py). Stamped at create time and
+    # immutable; rotate to a new token to change scope.
+    scope: str = Field(default="rw")
     created_at: datetime = Field(default_factory=_utcnow)
     last_used_at: datetime | None = Field(default=None)
     expires_at: datetime | None = Field(default=None)
