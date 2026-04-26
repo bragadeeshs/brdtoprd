@@ -13,6 +13,7 @@ import PushToLinearModal from './components/PushToLinearModal.jsx'
 import PushToGitHubModal from './components/PushToGitHubModal.jsx'
 import PushToSlackModal from './components/PushToSlackModal.jsx'
 import PushToNotionModal from './components/PushToNotionModal.jsx'
+import SaveExampleModal from './components/SaveExampleModal.jsx'
 import { setSentryUser } from './lib/sentry.js'
 import { identifyUser, track } from './lib/analytics.js'
 import Account from './pages/Account.jsx'
@@ -503,6 +504,8 @@ function AuthedApp() {
   const [pushSlackOpen, setPushSlackOpen] = useState(false)
   // M6.5 — push-to-Notion modal toggle.
   const [pushNotionOpen, setPushNotionOpen] = useState(false)
+  // M7.2 — save-as-few-shot-example modal.
+  const [saveExampleOpen, setSaveExampleOpen] = useState(false)
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -616,6 +619,7 @@ function AuthedApp() {
           onPushToGitHub={extractionId ? () => setPushGitHubOpen(true) : undefined}
           onPushToSlack={extractionId ? () => setPushSlackOpen(true) : undefined}
           onPushToNotion={extractionId ? () => setPushNotionOpen(true) : undefined}
+          onSaveAsExample={extractionId ? () => setSaveExampleOpen(true) : undefined}
         />
         <Routes>
           <Route
@@ -689,6 +693,13 @@ function AuthedApp() {
       )}
       {pushNotionOpen && extraction && (
         <PushToNotionModal extraction={extraction} onClose={() => setPushNotionOpen(false)} />
+      )}
+      {saveExampleOpen && extractionId && (
+        <SaveExampleModal
+          extractionId={extractionId}
+          defaultName={extraction?.filename || ''}
+          onClose={() => setSaveExampleOpen(false)}
+        />
       )}
     </div>
     </AppProvider>

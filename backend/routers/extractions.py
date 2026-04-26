@@ -39,6 +39,7 @@ from services.extractions import (
     record_usage,
     root_id_for,
 )
+from services.few_shot import resolve_enabled_examples
 from services.limits import enforce_limits
 from services.prompts import resolve_prompt_suffix
 from services.regen import regen_section
@@ -274,12 +275,14 @@ def rerun_extraction(
     enforce_limits(session, user, raw_text=source.raw_text, model=effective_model)
 
     suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
+    examples = resolve_enabled_examples(session, user.user_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source.filename,
         raw_text=source.raw_text,
         api_key=effective_key,
         model=effective_model,
         prompt_suffix=suffix,
+        few_shot_examples=examples,
     )
 
     row = persist_extraction(

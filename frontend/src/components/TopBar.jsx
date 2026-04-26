@@ -414,6 +414,7 @@ export default function TopBar({
   onPushToGitHub,
   onPushToSlack,
   onPushToNotion,
+  onSaveAsExample,
 }) {
   const [versions, setVersions] = useState([])
 
@@ -540,6 +541,17 @@ export default function TopBar({
               onPushToNotion={onPushToNotion}
               busy={loading || rerunning}
             />
+          )}
+          {typeof onSaveAsExample === 'function' && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Sparkles size={13} />}
+              onClick={onSaveAsExample}
+              title="Capture this extraction as a few-shot example for future runs"
+            >
+              Save as example
+            </Button>
           )}
           <ExportMenu extraction={extraction} busy={loading || rerunning} />
         </>

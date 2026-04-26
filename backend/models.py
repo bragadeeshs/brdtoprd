@@ -613,6 +613,47 @@ class ApiTokenCreateResponse(BaseModel):
     created_at: datetime
 
 
+class FewShotExampleRead(BaseModel):
+    """Returned by GET / POST / PATCH /api/me/few-shot-examples."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    input_text: str
+    expected_payload: ExtractionPayload   # validated; same shape extractor produces
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class FewShotExampleCreate(BaseModel):
+    """POST body. Either author-by-hand (input_text + expected_payload) or
+    capture-from-extraction (input_text + expected_payload from the named
+    extraction's current state — handled by a separate route)."""
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    input_text: str
+    expected_payload: ExtractionPayload   # validates the JSON shape on write
+    enabled: bool = True
+
+
+class FewShotExamplePatch(BaseModel):
+    """PATCH body — any field is optional."""
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = None
+    input_text: str | None = None
+    expected_payload: ExtractionPayload | None = None
+    enabled: bool | None = None
+
+
+class FewShotCaptureRequest(BaseModel):
+    """POST /api/me/few-shot-examples/from-extraction body. The extraction id
+    is in the URL; just need a name + initial enabled flag."""
+    model_config = ConfigDict(extra="forbid")
+    extraction_id: str
+    name: str
+    enabled: bool = True
+
+
 class ApiTokenRead(BaseModel):
     """List + read shape — preview only, never the plaintext."""
     model_config = ConfigDict(extra="forbid")

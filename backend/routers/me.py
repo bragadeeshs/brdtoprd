@@ -21,9 +21,17 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from auth.deps import CurrentUser, current_user
-from db.models import Extraction, GapState, Project, UsageLog, UserSettings
+from db.models import Extraction, FewShotExample, GapState, Project, UsageLog, UserSettings
 from db.session import get_session
+from services.extractions import _mint_id
+from services.few_shot import MAX_ENABLED as MAX_FEW_SHOT_ENABLED
+from services.scope import in_scope
 from models import (
+    ExtractionPayload,
+    FewShotCaptureRequest,
+    FewShotExampleCreate,
+    FewShotExamplePatch,
+    FewShotExampleRead,
     LegacyAdoptResult,
     LegacyCount,
     PlanRead,
@@ -398,3 +406,175 @@ def export_user_data(session: SessionDep, user: UserDep) -> StreamingResponse:
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+# ============================================================================
+# M7.2 — Few-shot examples (input → expected-output pairs)
+# ============================================================================
+#
+# CRUD + a capture-from-extraction shortcut. Examples are owned by the
+# calling user (no org-shared in v1; M7.2.b deferred). The active set
+# (enabled=True) is capped at MAX_FEW_SHOT_ENABLED to keep token cost
+# bounded; the activate path enforces the cap and returns 400 over-limit.
+#
+# `expected_payload` is validated against ExtractionPayload at write time
+# (Pydantic does it via the FewShotExampleCreate / Patch types). We don't
+# re-validate on read — the table column is JSON, and the round-trip
+# through Pydantic on GET would be wasted CPU on a hot path.
+
+
+def _to_few_shot_read(row: FewShotExample) -> FewShotExampleRead:
+    return FewShotExampleRead(
+        id=row.id,
+        name=row.name,
+        input_text=row.input_text,
+        expected_payload=ExtractionPayload(**row.expected_payload),
+        enabled=row.enabled,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _enabled_count(session: Session, user_id: str) -> int:
+    return session.exec(
+        select(func.count())
+        .select_from(FewShotExample)
+        .where(FewShotExample.user_id == user_id)
+        .where(FewShotExample.enabled == True)  # noqa: E712
+    ).one()
+
+
+@router.get("/few-shot-examples", response_model=list[FewShotExampleRead])
+def list_few_shot_examples(session: SessionDep, user: UserDep) -> list[FewShotExampleRead]:
+    """List all of the user's examples (enabled + disabled), oldest first.
+    The order matches what the extractor sees so the user can predict
+    which examples ship with their next extraction."""
+    rows = session.exec(
+        select(FewShotExample)
+        .where(FewShotExample.user_id == user.user_id)
+        .order_by(FewShotExample.created_at.asc())
+    ).all()
+    return [_to_few_shot_read(r) for r in rows]
+
+
+@router.post("/few-shot-examples", response_model=FewShotExampleRead, status_code=201)
+def create_few_shot_example(
+    payload: FewShotExampleCreate, session: SessionDep, user: UserDep
+) -> FewShotExampleRead:
+    """Create a new example. If `enabled=True` would push the active count
+    over MAX_FEW_SHOT_ENABLED, save it disabled instead — caller gets a 400
+    with a hint. Friendlier than rejecting the whole write outright."""
+    if payload.enabled and _enabled_count(session, user.user_id) >= MAX_FEW_SHOT_ENABLED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples — disable one first.",
+        )
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name cannot be empty")
+    if len(name) > 100:
+        raise HTTPException(status_code=400, detail="name too long (max 100 chars)")
+
+    row = FewShotExample(
+        id=_mint_id("fse"),
+        user_id=user.user_id,
+        org_id=None,           # v1: user-scope only (M7.2.b)
+        name=name,
+        input_text=payload.input_text,
+        expected_payload=payload.expected_payload.model_dump(),
+        enabled=payload.enabled,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_few_shot_read(row)
+
+
+@router.post(
+    "/few-shot-examples/from-extraction",
+    response_model=FewShotExampleRead, status_code=201,
+)
+def capture_few_shot_from_extraction(
+    payload: FewShotCaptureRequest, session: SessionDep, user: UserDep
+) -> FewShotExampleRead:
+    """Capture the named extraction's current state as a new example.
+    The PRIMARY UX path — most users won't author the JSON by hand, they'll
+    extract → edit (M4.1) → click "Save as example" → done."""
+    extraction = session.get(Extraction, payload.extraction_id)
+    if not in_scope(extraction, user):
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    if payload.enabled and _enabled_count(session, user.user_id) >= MAX_FEW_SHOT_ENABLED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples — disable one first.",
+        )
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name cannot be empty")
+
+    row = FewShotExample(
+        id=_mint_id("fse"),
+        user_id=user.user_id,
+        org_id=None,
+        name=name,
+        input_text=extraction.raw_text or "",
+        expected_payload={
+            "brief": extraction.brief or {"summary": "", "tags": []},
+            "actors": extraction.actors or [],
+            "stories": extraction.stories or [],
+            "nfrs": extraction.nfrs or [],
+            "gaps": extraction.gaps or [],
+        },
+        enabled=payload.enabled,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_few_shot_read(row)
+
+
+@router.patch("/few-shot-examples/{example_id}", response_model=FewShotExampleRead)
+def patch_few_shot_example(
+    example_id: str, patch: FewShotExamplePatch, session: SessionDep, user: UserDep
+) -> FewShotExampleRead:
+    row = session.get(FewShotExample, example_id)
+    if row is None or row.user_id != user.user_id:
+        raise HTTPException(status_code=404, detail="Example not found")
+
+    # Cap check only fires when transitioning False → True. Every other
+    # patch (rename, edit body) skips it.
+    if patch.enabled is True and not row.enabled:
+        if _enabled_count(session, user.user_id) >= MAX_FEW_SHOT_ENABLED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples — disable one first.",
+            )
+
+    if patch.name is not None:
+        n = patch.name.strip()
+        if not n:
+            raise HTTPException(status_code=400, detail="name cannot be empty")
+        if len(n) > 100:
+            raise HTTPException(status_code=400, detail="name too long (max 100 chars)")
+        row.name = n
+    if patch.input_text is not None:
+        row.input_text = patch.input_text
+    if patch.expected_payload is not None:
+        row.expected_payload = patch.expected_payload.model_dump()
+    if patch.enabled is not None:
+        row.enabled = patch.enabled
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_few_shot_read(row)
+
+
+@router.delete("/few-shot-examples/{example_id}", status_code=204)
+def delete_few_shot_example(example_id: str, session: SessionDep, user: UserDep) -> None:
+    row = session.get(FewShotExample, example_id)
+    if row is None or row.user_id != user.user_id:
+        raise HTTPException(status_code=404, detail="Example not found")
+    session.delete(row)
+    session.commit()

@@ -487,6 +487,50 @@ export async function pushToNotionApi(extractionId, { database_id, title_prop })
   return jsonOrThrow(res)
 }
 
+// ---------- few-shot examples (M7.2) ----------
+
+/** List the user's saved few-shot examples (enabled + disabled). */
+export async function listFewShotExamplesApi() {
+  const res = await apiFetch('/api/me/few-shot-examples')
+  return jsonOrThrow(res)
+}
+
+/** Author by hand. Body: {name, input_text, expected_payload, enabled?}. */
+export async function createFewShotExampleApi(body) {
+  const res = await apiFetch('/api/me/few-shot-examples', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+/** Capture from an existing extraction. Primary UX path. */
+export async function captureFewShotFromExtractionApi(extractionId, name, enabled = true) {
+  const res = await apiFetch('/api/me/few-shot-examples/from-extraction', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extraction_id: extractionId, name, enabled }),
+  })
+  return jsonOrThrow(res)
+}
+
+/** Patch any subset of name / input_text / expected_payload / enabled. */
+export async function patchFewShotExampleApi(id, patch) {
+  const res = await apiFetch(`/api/me/few-shot-examples/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  return jsonOrThrow(res)
+}
+
+export async function deleteFewShotExampleApi(id) {
+  const res = await apiFetch(`/api/me/few-shot-examples/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
 // ---------- API tokens (M6.7) ----------
 
 /** List the caller's API tokens (preview only — never plaintext). Includes

@@ -349,6 +349,7 @@ def call_claude(
     api_key: str | None,
     model: str | None,
     prompt_suffix: str | None = None,
+    few_shot_examples: list | None = None,
 ) -> tuple[ExtractionResult, str, TokenUsage | None]:
     """Run extraction and translate Anthropic errors into HTTPExceptions.
 
@@ -356,13 +357,17 @@ def call_claude(
     was set; `usage` is None for mock calls and populated otherwise so callers
     can persist UsageLog rows (M3.0 instrumentation).
 
-    M7.1: `prompt_suffix` is the user's saved system-prompt override. Threaded
-    through to `extract_requirements`; routes resolve it via
-    `services.prompts.resolve_prompt_suffix(session, user.user_id)`.
+    M7.1: `prompt_suffix` is the user's saved system-prompt override.
+    M7.2: `few_shot_examples` is the user's enabled FewShotExample rows.
+    Both threaded through to `extract_requirements`; routes resolve them via
+    `services.prompts.resolve_prompt_suffix` + `services.few_shot.resolve_enabled_examples`.
     """
     try:
         result, usage = extract_requirements(
-            filename, raw_text, api_key=api_key, model=model, prompt_suffix=prompt_suffix
+            filename, raw_text,
+            api_key=api_key, model=model,
+            prompt_suffix=prompt_suffix,
+            few_shot_examples=few_shot_examples,
         )
     except anthropic.AuthenticationError:
         log.warning("anthropic authentication failed")

@@ -47,6 +47,7 @@ def stream_extraction(
     api_key: str | None,
     model: str | None,
     prompt_suffix: str | None = None,
+    few_shot_examples: list | None = None,
 ) -> Iterator[dict]:
     """Yield streaming events for an extraction. Sync iterator — FastAPI's
     StreamingResponse runs it in the threadpool, which is the right place
@@ -81,11 +82,18 @@ def stream_extraction(
         "description": "Emit the structured extraction for this source document.",
         "input_schema": schema,
     }
-    user_msg = (
-        f"Source document: {filename}\n\n"
-        f"---BEGIN SOURCE---\n{raw_text}\n---END SOURCE---\n\n"
-        "Call emit_extraction with the structured requirements now."
-    )
+
+    # Prompt builder reused for both the real call and few-shot example
+    # turns — keeping the structure parallel helps Claude lock onto the
+    # same shape for the real extraction.
+    def _user_msg(fn: str, txt: str) -> str:
+        return (
+            f"Source document: {fn}\n\n"
+            f"---BEGIN SOURCE---\n{txt}\n---END SOURCE---\n\n"
+            "Call emit_extraction with the structured requirements now."
+        )
+
+    user_msg = _user_msg(filename, raw_text)
 
     try:
         # NOTE: no `thinking` parameter here — Anthropic rejects
@@ -96,7 +104,15 @@ def stream_extraction(
         # non-streaming /api/extract path still uses adaptive thinking via
         # messages.parse() (which uses a different mechanism that's
         # compatible with thinking).
+        from services.few_shot import as_tool_messages
         from services.prompts import join_system_prompt
+
+        # M7.2 — prepend few-shot tool-use demonstrations. Each example
+        # becomes (user, assistant tool_use, user tool_result) — the trailing
+        # tool_result is required by Anthropic for valid conversation shape.
+        messages = as_tool_messages(few_shot_examples or [], _user_msg, tool_name="emit_extraction")
+        messages.append({"role": "user", "content": user_msg})
+
         with client.messages.stream(
             model=eff_model,
             max_tokens=MAX_OUTPUT_TOKENS,
@@ -107,7 +123,7 @@ def stream_extraction(
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
-            messages=[{"role": "user", "content": user_msg}],
+            messages=messages,
             tools=[tool],
             tool_choice={"type": "tool", "name": "emit_extraction"},
         ) as stream:

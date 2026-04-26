@@ -89,6 +89,40 @@ class Extraction(SQLModel, table=True):
     gaps: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
 
 
+class FewShotExample(SQLModel, table=True):
+    """User-curated input → expected-output pair for in-context learning (M7.2).
+
+    Prepended to the extraction prompt as prior conversation turns so Claude
+    can see what "good output" looks like for this user's house style. Power-
+    user feature — most users won't author these by hand; they'll capture
+    them via the "Save as example" button after editing an extraction's
+    output to their liking.
+
+    Capped at 3 enabled examples per user (token-cost discipline — each
+    example adds ~3K-8K input tokens to every extraction). Disabled examples
+    don't ship to Claude but stay in the table for easy re-enable.
+
+    `expected_payload` is the full ExtractionPayload JSON (brief / actors /
+    stories / nfrs / gaps). Stored as a JSON column so we don't have to
+    re-validate on every read; route layer validates against the Pydantic
+    type on write.
+
+    org_id is reserved for M7.2.b org-shared examples; v1 is user-scope only.
+    """
+
+    __tablename__ = "few_shot_example"
+
+    id: str = Field(primary_key=True)         # `fse_<base36-ts>_<rand6>`
+    user_id: str = Field(index=True)
+    org_id: str | None = Field(default=None, index=True)
+    name: str
+    input_text: str
+    expected_payload: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    enabled: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 class ApiToken(SQLModel, table=True):
     """Long-lived API tokens for programmatic access (M6.7).
 

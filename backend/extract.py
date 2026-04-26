@@ -139,12 +139,24 @@ def resolve_model(model: str | None) -> str:
     return model or os.environ.get("STORYFORGE_MODEL") or DEFAULT_MODEL
 
 
+def _build_user_msg(filename: str, raw_text: str) -> str:
+    """Standard user-prompt shape. Reused by few-shot example formatting
+    so the demonstration turns look identical to the real one — Claude
+    learns from the parallel structure."""
+    return (
+        f"Source document: {filename}\n\n"
+        f"---BEGIN SOURCE---\n{raw_text}\n---END SOURCE---\n\n"
+        "Extract the structured requirements now."
+    )
+
+
 def extract_requirements(
     filename: str,
     raw_text: str,
     api_key: str | None = None,
     model: str | None = None,
     prompt_suffix: str | None = None,
+    few_shot_examples: list | None = None,
 ) -> tuple[ExtractionResult, TokenUsage | None]:
     """Run the extraction. Returns the parsed result + token usage (or None for mock).
 
@@ -154,6 +166,10 @@ def extract_requirements(
     M7.1: `prompt_suffix` (from `services/prompts.resolve_prompt_suffix`) is
     appended to the system prompt when set, letting power users enforce
     house-style overrides without forking the codebase.
+
+    M7.2: `few_shot_examples` (from `services/few_shot.resolve_enabled_examples`)
+    is a list of FewShotExample rows prepended as prior conversation turns
+    so Claude sees concrete input → expected-output demonstrations.
     """
     # BYOK key (from request header) takes precedence over the server's env key
     effective_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
@@ -164,6 +180,7 @@ def extract_requirements(
 
     client = anthropic.Anthropic(api_key=effective_key)
 
+    from services.few_shot import as_parse_messages
     from services.prompts import join_system_prompt
 
     # System prompt is stable across runs — mark it cacheable. The user's
@@ -177,18 +194,20 @@ def extract_requirements(
         }
     ]
 
-    user_msg = (
-        f"Source document: {filename}\n\n"
-        f"---BEGIN SOURCE---\n{raw_text}\n---END SOURCE---\n\n"
-        "Extract the structured requirements now."
-    )
+    user_msg = _build_user_msg(filename, raw_text)
+
+    # M7.2 — prepend few-shot example turns. as_parse_messages produces
+    # alternating user/assistant pairs; the real extraction turn appends
+    # at the end. Empty examples list = empty prefix (no-op).
+    messages = as_parse_messages(few_shot_examples or [], _build_user_msg)
+    messages.append({"role": "user", "content": user_msg})
 
     response = client.messages.parse(
         model=effective_model,
         max_tokens=16000,
         thinking={"type": "adaptive"},
         system=system_blocks,
-        messages=[{"role": "user", "content": user_msg}],
+        messages=messages,
         output_format=ExtractionPayload,
     )
 

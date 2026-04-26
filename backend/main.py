@@ -40,6 +40,7 @@ from services.extractions import (
     record_usage,
     save_upload,
 )
+from services.few_shot import resolve_enabled_examples
 from services.ingest import combine_raw_texts, ingest_file
 from services.limits import enforce_limits
 from services.prompts import resolve_prompt_suffix
@@ -251,12 +252,14 @@ async def extract(
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
     suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
+    examples = resolve_enabled_examples(session, user.user_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source_name,
         raw_text=raw_text,
         api_key=effective_key,
         model=effective_model,
         prompt_suffix=suffix,
+        few_shot_examples=examples,
     )
 
     # Mint the id up front so the upload path can reference it before the
@@ -383,6 +386,10 @@ async def extract_stream(
     # the request-scoped session is still alive). Snapshot into a local so
     # the generator's fresh session doesn't have to refetch.
     effective_suffix = resolve_prompt_suffix(session, user.user_id)
+    # M7.2 — same lifecycle reasoning for few-shot examples. Snapshot a
+    # plain list of (id, name, input_text, expected_payload) so the
+    # generator doesn't reach into the closing session.
+    effective_examples = resolve_enabled_examples(session, user.user_id)
 
     # Mint id up front so the start event can carry it (the frontend uses it
     # to wire the in-flight extraction to the persisted row on `complete`).
@@ -414,6 +421,7 @@ async def extract_stream(
                 api_key=effective_key,
                 model=effective_model,
                 prompt_suffix=effective_suffix,
+                few_shot_examples=effective_examples,
             ):
                 etype = ev["type"]
                 if etype == "usage":

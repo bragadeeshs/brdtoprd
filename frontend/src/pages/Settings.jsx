@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   createApiTokenApi,
+  deleteFewShotExampleApi,
   deleteGitHubConnectionApi,
   deleteJiraConnectionApi,
   deleteLinearConnectionApi,
@@ -13,10 +14,12 @@ import {
   getNotionConnectionApi,
   getSlackConnectionApi,
   listApiTokensApi,
+  listFewShotExamplesApi,
   listGitHubReposApi,
   listJiraProjectsApi,
   listLinearTeamsApi,
   listNotionDatabasesApi,
+  patchFewShotExampleApi,
   putGitHubConnectionApi,
   putJiraConnectionApi,
   putLinearConnectionApi,
@@ -1519,6 +1522,115 @@ function TokenRow({ token, isLast, onRevoke }) {
   )
 }
 
+/* M7.2 — manage saved few-shot examples. Read-only first version: list +
+ * toggle enable/disable + delete. Authoring is via the "Save as example"
+ * TopBar button (captures from a live extraction); hand-editing the
+ * expected_payload JSON is intentionally not in this v1 — the JSON shape
+ * is structured enough that a textarea is more dangerous than useful. */
+function FewShotExamplesSection() {
+  const { toast } = useToast()
+  const [rows, setRows] = useState(null)
+
+  const refresh = async () => {
+    try { setRows(await listFewShotExamplesApi()) }
+    catch (e) { toast.error(e.message || 'Could not load examples') }
+  }
+  useEffect(() => { refresh() }, [])
+
+  const enabledCount = (rows || []).filter((r) => r.enabled).length
+
+  const toggle = async (row) => {
+    try {
+      await patchFewShotExampleApi(row.id, { enabled: !row.enabled })
+      await refresh()
+    } catch (e) {
+      toast.error(e.message || 'Could not toggle')
+    }
+  }
+  const remove = async (row) => {
+    if (!window.confirm(`Delete "${row.name}"?`)) return
+    try {
+      await deleteFewShotExampleApi(row.id)
+      await refresh()
+      toast.success('Example deleted')
+    } catch (e) {
+      toast.error(e.message || 'Could not delete')
+    }
+  }
+
+  if (rows === null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading examples…
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Demonstrations Claude sees on every extraction — input → expected output pairs that
+        teach your house style. <strong>Capture from a live extraction</strong> via the "Save as
+        example" button in the studio after editing it to your liking. Up to 3 enabled at once;
+        currently {enabledCount} of 3.
+      </p>
+
+      {rows.length === 0 ? (
+        <div style={{
+          padding: '14px 16px', fontSize: 12.5, color: 'var(--text-soft)',
+          fontStyle: 'italic', textAlign: 'center',
+          background: 'var(--bg-subtle)', border: '1px dashed var(--border)',
+          borderRadius: 'var(--radius)',
+        }}>
+          No examples yet — extract a doc, edit it to your liking, click "Save as example" in the studio.
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex', flexDirection: 'column',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+        }}>
+          {rows.map((r, i) => {
+            const sCount = r.expected_payload?.stories?.length || 0
+            const nCount = r.expected_payload?.nfrs?.length || 0
+            const gCount = r.expected_payload?.gaps?.length || 0
+            return (
+              <div
+                key={r.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 14px',
+                  borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--border)',
+                  opacity: r.enabled ? 1 : 0.6,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
+                    {r.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2 }}>
+                    {r.input_text.length.toLocaleString()} chars input · {sCount}st / {nCount}nfr / {gCount}gap output
+                  </div>
+                </div>
+                <Badge tone={r.enabled ? 'success' : 'neutral'} size="sm">
+                  {r.enabled ? 'Active' : 'Inactive'}
+                </Badge>
+                <Button
+                  variant="ghost" size="sm"
+                  onClick={() => toggle(r)}
+                  title={r.enabled ? 'Disable (still saved, just not sent to Claude)' : 'Enable'}
+                >
+                  {r.enabled ? 'Disable' : 'Enable'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => remove(r)}>Delete</Button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FieldLabel({ children }) {
   return (
     <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-soft)' }}>
@@ -1645,6 +1757,14 @@ export default function Settings() {
               onSaved={(s) => setServerSettings(s)}
             />
           )}
+        </Section>
+        <Section
+          icon={<Sparkles size={16} />}
+          tone="info"
+          title="Few-shot examples"
+          description="Saved input → expected-output pairs Claude sees on every extraction. Strong way to teach a custom story format or naming convention by example, not by description."
+        >
+          <FewShotExamplesSection />
         </Section>
         <Section
           icon={<Sun size={16} />}
