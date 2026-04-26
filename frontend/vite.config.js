@@ -12,4 +12,12 @@ export default defineConfig({
       },
     },
   },
+  // M0.1.2 — Vitest config. jsdom so DOM APIs (window, document) are
+  // available; setupFiles wires @testing-library/jest-dom matchers.
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    css: false,
+  },
 })

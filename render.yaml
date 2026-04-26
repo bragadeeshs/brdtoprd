@@ -72,3 +72,18 @@ services:
       # serves the SPA from the same origin so CORS isn't triggered at runtime.
       - key: CORS_ORIGINS
         sync: false
+      # M0.3.4 — Sentry. Both keys optional; both modules silent no-op when
+      # unset, so the app boots fine without them. Set both to the same
+      # project DSN for unified backend+frontend tracking, OR use two
+      # different projects if you want them separated in Sentry's UI.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENV
+        value: production
+      # VITE_SENTRY_DSN is the *frontend* DSN, baked into the JS bundle at
+      # build time (same pattern as VITE_CLERK_PUBLISHABLE_KEY above).
+      # Sentry DSNs are public-by-design — exposing it client-side is fine.
+      - key: VITE_SENTRY_DSN
+        sync: false
+      - key: VITE_SENTRY_ENV
+        value: production

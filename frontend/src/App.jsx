@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { SignedIn, SignedOut, useAuth, useOrganization } from '@clerk/clerk-react'
+import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
 import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
@@ -8,6 +8,7 @@ import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import ShareModal from './components/ShareModal.jsx'
+import { setSentryUser } from './lib/sentry.js'
 import Account from './pages/Account.jsx'
 import Documents from './pages/Documents.jsx'
 import Project from './pages/Project.jsx'
@@ -219,6 +220,14 @@ function AuthedApp() {
   // to unmount and refetch on next mount.
   const { organization, isLoaded: orgLoaded } = useOrganization()
   const orgId = organization?.id || null
+
+  // M0.3.4 — tag Sentry events with the active user + org so issues are
+  // attributable. No PII (just ids); the helper is a no-op if Sentry isn't
+  // configured.
+  const { user: clerkUser } = useUser()
+  useEffect(() => {
+    setSentryUser(clerkUser?.id || null, orgId)
+  }, [clerkUser?.id, orgId])
 
   const [extraction, setExtraction] = useState(null)
   const [extractionId, setExtractionId] = useState(null)

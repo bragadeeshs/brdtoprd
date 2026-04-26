@@ -22,6 +22,13 @@ RUN npm ci
 ARG VITE_CLERK_PUBLISHABLE_KEY=""
 ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
 
+# M0.3.4 — Sentry DSN baked at build time. Optional; sentry init is a
+# silent no-op when missing, so the build stays clean even without the var.
+ARG VITE_SENTRY_DSN=""
+ENV VITE_SENTRY_DSN=${VITE_SENTRY_DSN}
+ARG VITE_SENTRY_ENV=""
+ENV VITE_SENTRY_ENV=${VITE_SENTRY_ENV}
+
 # Then build
 COPY frontend/ ./
 RUN npm run build

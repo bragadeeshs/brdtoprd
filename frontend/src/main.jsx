@@ -4,7 +4,12 @@ import { BrowserRouter, useNavigate } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App.jsx'
 import { ToastProvider } from './components/Toast.jsx'
+import { initSentry } from './lib/sentry.js'
 import './styles.css'
+
+// M0.3.4 — initialize Sentry BEFORE React mounts so import-time crashes
+// are captured. Silent no-op when VITE_SENTRY_DSN is unset.
+initSentry()
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 if (!PUBLISHABLE_KEY) {

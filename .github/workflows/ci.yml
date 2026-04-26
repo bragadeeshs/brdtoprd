@@ -27,8 +27,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pytest
-        run: pytest -v
+      - name: Run pytest with coverage
+        # M0.1.4 — coverage report on stdout for visibility. No --cov-fail-under
+        # yet; we'll set a threshold once we have a baseline measurement of
+        # what's reasonable for the extract / services modules.
+        run: pytest -v --cov=services --cov=routers --cov=extract --cov-report=term-missing
 
   frontend:
     name: frontend (vite build)
@@ -47,6 +50,14 @@ jobs:
 
       - name: Install deps
         run: npm ci
+
+      - name: Run tests
+        # M0.1.2 — Vitest. Same Clerk-key placeholder rule as the build:
+        # the test setup file shouldn't read it, but if any imported module
+        # does at import time, we need it non-empty.
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder_key
+        run: npm test
 
       - name: Build
         env:

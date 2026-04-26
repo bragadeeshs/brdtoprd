@@ -408,6 +408,7 @@ def record_usage(
     personal-context calls — so org-level billing is one query."""
     if usage is None:
         usage = TokenUsage()
+    cost_cents = compute_cost_cents(model, usage)
     row = UsageLog(
         user_id=user_id,
         org_id=org_id,
@@ -419,10 +420,22 @@ def record_usage(
         output_tokens=usage.output_tokens,
         cache_creation_input_tokens=usage.cache_creation_input_tokens,
         cache_read_input_tokens=usage.cache_read_input_tokens,
-        cost_cents=compute_cost_cents(model, usage),
+        cost_cents=cost_cents,
     )
     session.add(row)
     session.commit()
+    # M0.3.3 — emit a structured log line per Claude call so usage shows up
+    # alongside access logs in Render's pipeline (and Sentry breadcrumbs).
+    # Cents → dollars for human-readable scanning. user_id intentionally
+    # omitted (PII-ish + the rid in the JSON formatter is enough for trace).
+    log.info(
+        "usage action=%s model=%s live=%s in=%d out=%d cache_w=%d cache_r=%d cost_usd=%.4f extraction_id=%s",
+        action, model, live,
+        usage.input_tokens, usage.output_tokens,
+        usage.cache_creation_input_tokens, usage.cache_read_input_tokens,
+        cost_cents / 100.0,
+        extraction_id or "-",
+    )
 
 
 # ---------- projects ----------
