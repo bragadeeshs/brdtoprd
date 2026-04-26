@@ -51,6 +51,7 @@ def _to_read(row: UserSettings | None) -> UserSettingsRead:
             anthropic_key_set=False,
             anthropic_key_preview=None,
             model_default=row.model_default if row else None,
+            prompt_suffix=row.prompt_suffix if row else None,
             updated_at=row.updated_at if row else None,
         )
     plaintext = decrypt_secret(row.anthropic_key_encrypted)
@@ -60,6 +61,7 @@ def _to_read(row: UserSettings | None) -> UserSettingsRead:
         anthropic_key_set=plaintext is not None,
         anthropic_key_preview=key_preview(plaintext) if plaintext else None,
         model_default=row.model_default,
+        prompt_suffix=row.prompt_suffix,
         updated_at=row.updated_at,
     )
 
@@ -95,6 +97,16 @@ def put_settings(
 
     if patch.model_default is not None:
         row.model_default = patch.model_default.strip() or None
+
+    if patch.prompt_suffix is not None:
+        # M7.1 — empty string clears the suffix; non-empty saves it.
+        # 4000-char cap mirrors the comments cap — well above any real
+        # template (a "house style" doc rarely runs over 800 chars) but
+        # well below blowing up token cost on every extraction.
+        s = patch.prompt_suffix
+        if len(s) > 4000:
+            raise HTTPException(status_code=400, detail="prompt_suffix too long (max 4000 chars)")
+        row.prompt_suffix = s.strip() or None
 
     row.updated_at = datetime.now(timezone.utc)
     session.add(row)

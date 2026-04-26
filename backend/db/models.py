@@ -279,6 +279,12 @@ class UserSettings(SQLModel, table=True):
     plan_renews_at: datetime | None = Field(default=None)
     # Set when user clicks "cancel" — sub stays active until renews_at.
     plan_canceled_at: datetime | None = Field(default=None)
+    # M7.1 — custom system-prompt suffix appended to the default extraction
+    # prompt. Lets power users enforce house-style ("use job-story format",
+    # "tag PCI NFRs as severity=high", etc.). NULL = use default prompt only.
+    # Capped at 4000 chars in the route layer; see services/prompts.py for
+    # how it's joined into the final prompt.
+    prompt_suffix: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

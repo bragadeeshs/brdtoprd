@@ -174,6 +174,7 @@ def regen_section(
     gaps: list[dict],
     api_key: str | None,
     model: str | None,
+    prompt_suffix: str | None = None,
 ) -> tuple[list[dict], str, TokenUsage | None]:
     """Run a regen call. Returns `(new_items, model_used, usage)`.
 
@@ -218,10 +219,15 @@ def regen_section(
         # `thinking + tool_choice={"type": "tool", ...}` with a 400. Output
         # is schema-constrained via the tool input_schema, so the reasoning
         # lift from adaptive thinking is small for this regen path.
+        from services.prompts import join_system_prompt
         response = client.messages.create(
             model=eff_model,
             max_tokens=8000,  # smaller than full extract — single section
-            system=[{"type": "text", "text": REGEN_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            system=[{
+                "type": "text",
+                "text": join_system_prompt(REGEN_SYSTEM, prompt_suffix),
+                "cache_control": {"type": "ephemeral"},
+            }],
             messages=[{"role": "user", "content": user_msg}],
             tools=[tool],
             tool_choice={"type": "tool", "name": meta["tool_name"]},

@@ -144,11 +144,16 @@ def extract_requirements(
     raw_text: str,
     api_key: str | None = None,
     model: str | None = None,
+    prompt_suffix: str | None = None,
 ) -> tuple[ExtractionResult, TokenUsage | None]:
     """Run the extraction. Returns the parsed result + token usage (or None for mock).
 
     The usage tuple lets callers persist M3.0 UsageLog rows without re-querying
     the SDK. Mock-mode returns `None` because no real call was made.
+
+    M7.1: `prompt_suffix` (from `services/prompts.resolve_prompt_suffix`) is
+    appended to the system prompt when set, letting power users enforce
+    house-style overrides without forking the codebase.
     """
     # BYOK key (from request header) takes precedence over the server's env key
     effective_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
@@ -159,12 +164,15 @@ def extract_requirements(
 
     client = anthropic.Anthropic(api_key=effective_key)
 
-    # System prompt is stable across runs — mark it cacheable. (It's short today;
-    # the cache kicks in once it crosses the per-model minimum. Harmless either way.)
+    from services.prompts import join_system_prompt
+
+    # System prompt is stable across runs — mark it cacheable. The user's
+    # suffix is part of the cached block; same user across runs hits cache,
+    # different users with different suffixes don't share cache (correct).
     system_blocks = [
         {
             "type": "text",
-            "text": EXTRACTION_SYSTEM,
+            "text": join_system_prompt(EXTRACTION_SYSTEM, prompt_suffix),
             "cache_control": {"type": "ephemeral"},
         }
     ]

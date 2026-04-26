@@ -30,7 +30,7 @@ import { copyToClipboard } from '../lib/clipboard.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
-import { Eye, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
+import { Eye, FileText, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -1213,6 +1213,103 @@ function NotionConnectionForm() {
   )
 }
 
+/* M7.1 — Prompt template (system-prompt suffix).
+ *
+ * Single textarea, character count, Save button. Loaded from + saved
+ * back to the same UserSettings row that holds the BYOK key + model
+ * preference. Empty save (or the explicit Clear button) sets the
+ * column to NULL and the extractor reverts to the unmodified default
+ * prompt.
+ *
+ * The placeholder shows three concrete examples — copying any of them
+ * into the field is a fine starting point. We deliberately don't ship
+ * a "template gallery" UX in v1; one suffix per user covers the
+ * 90% case (analysts have one preferred style across all extractions).
+ */
+function PromptTemplateForm({ initial, onSaved }) {
+  const { toast } = useToast()
+  const [draft, setDraft] = useState(initial || '')
+  const [saving, setSaving] = useState(false)
+
+  // Re-sync if the parent's saved value changes (e.g. after another
+  // section's save refreshes settings).
+  useEffect(() => { setDraft(initial || '') }, [initial])
+
+  const dirty = (draft || '') !== (initial || '')
+  const charCount = draft.length
+  const overLimit = charCount > 4000
+
+  const save = async () => {
+    if (overLimit) {
+      toast.error('Template too long (max 4000 chars)')
+      return
+    }
+    setSaving(true)
+    try {
+      // Empty string clears the column server-side; non-empty saves it.
+      const updated = await putMeSettingsApi({ prompt_suffix: draft })
+      onSaved?.(updated)
+      toast.success(draft ? 'Template saved' : 'Template cleared')
+    } catch (e) {
+      toast.error(e.message || 'Could not save template')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const clear = () => {
+    setDraft('')
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        disabled={saving}
+        rows={6}
+        placeholder={`Examples:
+
+Use 'job story' format instead of 'user story':
+  When [situation], I want to [motivation], so I can [outcome].
+
+Tag any NFR mentioning compliance (PCI-DSS, GDPR, HIPAA) with severity: high.
+
+All actors must be roles or systems, never specific people.`}
+        style={{
+          ...inputStyle,
+          minHeight: 140,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12.5,
+          lineHeight: 1.55,
+          resize: 'vertical',
+          borderColor: overLimit ? 'var(--danger-strong, #b91c1c)' : 'var(--border-strong)',
+        }}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{
+          fontSize: 11.5,
+          color: overLimit ? 'var(--danger-ink)' : 'var(--text-soft)',
+          fontFamily: 'var(--font-mono)',
+        }}>
+          {charCount.toLocaleString()} / 4,000
+          {overLimit && ' · over limit'}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {draft && (
+            <Button variant="ghost" size="sm" onClick={clear} disabled={saving}>
+              Clear
+            </Button>
+          )}
+          <Button variant="primary" size="sm" onClick={save} disabled={saving || !dirty || overLimit}>
+            {saving ? 'Saving…' : initial ? 'Save changes' : 'Save'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* M6.7 — API tokens management.
  *
  * UX:
@@ -1529,6 +1626,23 @@ export default function Settings() {
             <ModelPicker
               selected={serverSettings?.model_default || ''}
               onChange={(model) => setServerSettings((s) => ({ ...(s || {}), model_default: model || null }))}
+            />
+          )}
+        </Section>
+        <Section
+          icon={<FileText size={16} />}
+          tone="purple"
+          title="Prompt template"
+          description="Append your own instructions to the system prompt — house style for stories, naming conventions, severity rules. Applied to every extraction, rerun, and regen."
+        >
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+              <Spinner size={14} /> Loading…
+            </div>
+          ) : (
+            <PromptTemplateForm
+              initial={serverSettings?.prompt_suffix || ''}
+              onSaved={(s) => setServerSettings(s)}
             />
           )}
         </Section>

@@ -239,6 +239,7 @@ class UserSettingsRead(BaseModel):
     anthropic_key_set: bool
     anthropic_key_preview: str | None = None  # last 4 chars of the plaintext key
     model_default: str | None = None
+    prompt_suffix: str | None = None  # M7.1 — appended to the system prompt
     updated_at: datetime | None = None
 
 
@@ -247,6 +248,7 @@ class UserSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     anthropic_key: str | None = None
     model_default: str | None = None
+    prompt_suffix: str | None = None  # M7.1 — pass "" to clear
 
 
 # ----- Plan + usage (M3.5) -----

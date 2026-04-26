@@ -41,6 +41,7 @@ from services.extractions import (
     save_upload,
 )
 from services.limits import enforce_limits
+from services.prompts import resolve_prompt_suffix
 from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
 from services.streaming import stream_extraction
@@ -236,11 +237,13 @@ async def extract(
 
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
+    suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
     result, model_used, usage = call_claude(
         filename=source_name,
         raw_text=raw_text,
         api_key=effective_key,
         model=effective_model,
+        prompt_suffix=suffix,
     )
 
     # Mint the id up front so the upload path can reference it before the
@@ -367,6 +370,11 @@ async def extract_stream(
     # path catches them. These fire before the SSE stream opens.
     enforce_limits(session, user, raw_text=raw_text, model=effective_model)
 
+    # M7.1 — resolve the user's saved prompt suffix during pre-flight (while
+    # the request-scoped session is still alive). Snapshot into a local so
+    # the generator's fresh session doesn't have to refetch.
+    effective_suffix = resolve_prompt_suffix(session, user.user_id)
+
     # Mint id up front so the start event can carry it (the frontend uses it
     # to wire the in-flight extraction to the persisted row on `complete`).
     extraction_id = mint_extraction_id()
@@ -396,6 +404,7 @@ async def extract_stream(
                 raw_text=raw_text,
                 api_key=effective_key,
                 model=effective_model,
+                prompt_suffix=effective_suffix,
             ):
                 etype = ev["type"]
                 if etype == "usage":

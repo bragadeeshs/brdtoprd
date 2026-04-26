@@ -40,6 +40,7 @@ from services.extractions import (
     root_id_for,
 )
 from services.limits import enforce_limits
+from services.prompts import resolve_prompt_suffix
 from services.regen import regen_section
 from services.scope import apply_scope, in_scope
 
@@ -272,11 +273,13 @@ def rerun_extraction(
     # user's monthly quota too (re-extraction is a paid operation).
     enforce_limits(session, user, raw_text=source.raw_text, model=effective_model)
 
+    suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
     result, model_used, usage = call_claude(
         filename=source.filename,
         raw_text=source.raw_text,
         api_key=effective_key,
         model=effective_model,
+        prompt_suffix=suffix,
     )
 
     row = persist_extraction(
@@ -332,6 +335,7 @@ def regen_extraction_section(
     # Same plan gates as /api/extract — regen is a paid Claude call.
     enforce_limits(session, user, raw_text=row.raw_text or "", model=effective_model)
 
+    suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
     new_items, model_used, usage = regen_section(
         section=payload.section,
         filename=row.filename,
@@ -343,6 +347,7 @@ def regen_extraction_section(
         gaps=row.gaps or [],
         api_key=effective_key,
         model=effective_model,
+        prompt_suffix=suffix,
     )
 
     # Write back. Use setattr because the section name comes from a Literal

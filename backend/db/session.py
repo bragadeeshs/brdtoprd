@@ -167,6 +167,10 @@ def _apply_soft_migrations() -> None:
             log.info("migrating: adding user_settings.plan_canceled_at (M3.6)")
             conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN plan_canceled_at TIMESTAMP")
             conn.commit()
+        if "prompt_suffix" not in us_cols:
+            log.info("migrating: adding user_settings.prompt_suffix (M7.1)")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN prompt_suffix TEXT")
+            conn.commit()
 
 
 def get_session() -> Generator[Session, None, None]:

@@ -46,6 +46,7 @@ def stream_extraction(
     raw_text: str,
     api_key: str | None,
     model: str | None,
+    prompt_suffix: str | None = None,
 ) -> Iterator[dict]:
     """Yield streaming events for an extraction. Sync iterator — FastAPI's
     StreamingResponse runs it in the threadpool, which is the right place
@@ -95,13 +96,14 @@ def stream_extraction(
         # non-streaming /api/extract path still uses adaptive thinking via
         # messages.parse() (which uses a different mechanism that's
         # compatible with thinking).
+        from services.prompts import join_system_prompt
         with client.messages.stream(
             model=eff_model,
             max_tokens=MAX_OUTPUT_TOKENS,
             system=[
                 {
                     "type": "text",
-                    "text": EXTRACTION_SYSTEM,
+                    "text": join_system_prompt(EXTRACTION_SYSTEM, prompt_suffix),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
