@@ -214,10 +214,13 @@ def regen_section(
     )
 
     try:
+        # NOTE: no `thinking` parameter here — Anthropic rejects
+        # `thinking + tool_choice={"type": "tool", ...}` with a 400. Output
+        # is schema-constrained via the tool input_schema, so the reasoning
+        # lift from adaptive thinking is small for this regen path.
         response = client.messages.create(
             model=eff_model,
             max_tokens=8000,  # smaller than full extract — single section
-            thinking={"type": "adaptive"},
             system=[{"type": "text", "text": REGEN_SYSTEM, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user_msg}],
             tools=[tool],

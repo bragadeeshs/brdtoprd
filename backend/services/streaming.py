@@ -87,10 +87,17 @@ def stream_extraction(
     )
 
     try:
+        # NOTE: no `thinking` parameter here — Anthropic rejects
+        # `thinking + tool_choice={"type": "tool", ...}` with a 400
+        # ("Thinking may not be enabled when tool_choice forces tool use.").
+        # Output is schema-constrained via the tool input_schema, so the
+        # reasoning lift from adaptive thinking is small here. The
+        # non-streaming /api/extract path still uses adaptive thinking via
+        # messages.parse() (which uses a different mechanism that's
+        # compatible with thinking).
         with client.messages.stream(
             model=eff_model,
             max_tokens=MAX_OUTPUT_TOKENS,
-            thinking={"type": "adaptive"},
             system=[
                 {
                     "type": "text",
