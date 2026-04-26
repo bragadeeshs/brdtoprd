@@ -340,6 +340,23 @@ export async function putJiraConnectionApi(body) {
   return jsonOrThrow(res)
 }
 
+/** M6.2.d — whether server-side Jira OAuth (CLIENT_ID/SECRET) is configured.
+ *  Frontend uses this to decide whether to render the "Connect with
+ *  Atlassian" button next to the existing API-token form. */
+export async function getJiraOAuthStatusApi() {
+  const res = await apiFetch('/api/integrations/jira/oauth/status')
+  return jsonOrThrow(res)
+}
+
+/** Begin the Jira OAuth flow. Returns {url, state}; frontend redirects
+ *  the browser to `url`. Atlassian's callback lands on
+ *  /api/integrations/jira/oauth/callback (handled server-side) and then
+ *  bounces back to /settings. */
+export async function startJiraOAuthApi() {
+  const res = await apiFetch('/api/integrations/jira/oauth/start', { method: 'POST' })
+  return jsonOrThrow(res)
+}
+
 /** Delete the saved Jira connection. */
 export async function deleteJiraConnectionApi({ scope = 'user' } = {}) {
   const res = await apiFetch(

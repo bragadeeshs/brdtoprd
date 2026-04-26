@@ -13,6 +13,7 @@ import {
   deleteSlackWebhookApi,
   getGitHubConnectionApi,
   getJiraConnectionApi,
+  getJiraOAuthStatusApi,
   getLinearConnectionApi,
   getMeSettingsApi,
   getNotionConnectionApi,
@@ -34,6 +35,7 @@ import {
   putNotionConnectionApi,
   putSlackConnectionApi,
   revokeApiTokenApi,
+  startJiraOAuthApi,
   testApiKey,
 } from '../api.js'
 import { copyToClipboard } from '../lib/clipboard.js'
@@ -581,6 +583,7 @@ function JiraConnectionForm() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false) // form open
   const [busy, setBusy] = useState(false)
+  const [oauthEnabled, setOauthEnabled] = useState(false)   // M6.2.d
   const { scope, picker: scopePicker, badge: scopeBadge } = useConnectionScope(conn?.scope)
 
   // Form fields (only used while editing)
@@ -588,15 +591,48 @@ function JiraConnectionForm() {
   const [email, setEmail] = useState('')
   const [token, setToken] = useState('')
 
+  // Detect the ?jira_oauth=connected / ?jira_oauth_error=… search params
+  // dropped by the OAuth callback, surface a toast, then strip them from
+  // the URL so a refresh doesn't re-toast.
+  useEffect(() => {
+    const u = new URL(window.location.href)
+    const ok = u.searchParams.get('jira_oauth')
+    const err = u.searchParams.get('jira_oauth_error')
+    if (ok === 'connected') toast.success('Jira connected via Atlassian.')
+    else if (err) toast.error(`Jira OAuth failed: ${err}`)
+    if (ok || err) {
+      u.searchParams.delete('jira_oauth')
+      u.searchParams.delete('jira_oauth_error')
+      window.history.replaceState({}, '', u.toString())
+    }
+  }, [toast])
+
   useEffect(() => {
     let alive = true
     setLoading(true)
-    getJiraConnectionApi()
-      .then((c) => { if (alive) setConn(c) })
+    Promise.all([getJiraConnectionApi(), getJiraOAuthStatusApi()])
+      .then(([c, status]) => {
+        if (!alive) return
+        setConn(c)
+        setOauthEnabled(!!status?.enabled)
+      })
       .catch((e) => { if (alive) toast.error(e.message || 'Could not load Jira connection') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [])
+
+  const startOAuth = async () => {
+    setBusy(true)
+    try {
+      const r = await startJiraOAuthApi()
+      // Hard navigate to Atlassian — they redirect back to the callback,
+      // which then redirects to /settings with ?jira_oauth=connected.
+      window.location.href = r.url
+    } catch (e) {
+      toast.error(e.message || 'Could not start OAuth')
+      setBusy(false)
+    }
+  }
 
   const startEdit = () => {
     setBaseUrl(conn?.base_url || '')
@@ -696,6 +732,30 @@ function JiraConnectionForm() {
   // Form mode (no saved conn, or editing)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
+      {/* M6.2.d — OAuth shortcut. Only visible when the server has
+          CLIENT_ID/SECRET configured. Below it: a soft divider + the
+          existing API-token form for users who prefer the manual path. */}
+      {oauthEnabled && (
+        <>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={startOAuth}
+            disabled={busy}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {busy ? 'Redirecting…' : 'Connect with Atlassian'}
+          </Button>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            margin: '4px 0', color: 'var(--text-soft)', fontSize: 11,
+          }}>
+            <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            or use an API token
+            <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
+        </>
+      )}
       <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
         Generate an API token at{' '}
         <a

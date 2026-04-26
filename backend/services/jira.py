@@ -38,23 +38,51 @@ HTTP_TIMEOUT = 20.0
 
 
 class JiraClient:
-    def __init__(self, base_url: str, email: str, api_token: str):
+    """Jira REST client with two auth modes.
+
+    M6.2 (API token): construct with `base_url + email + api_token`. Uses
+    HTTP Basic auth; `base_url` is the user's Atlassian site (e.g.
+    `https://acme.atlassian.net`).
+
+    M6.2.d (OAuth 3LO): construct with `cloud_id + access_token + site_url`.
+    `base_url` is `https://api.atlassian.com/ex/jira/{cloud_id}` (Atlassian's
+    OAuth proxy); auth is `Bearer <access_token>`. `site_url` is the user-
+    facing host used for issue links (e.g. `https://acme.atlassian.net/browse/X-1`).
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        email: str | None = None,
+        api_token: str | None = None,
+        *,
+        access_token: str | None = None,
+        site_url: str | None = None,
+    ):
         # Strip trailing slash so URL building is predictable.
         self.base_url = (base_url or "").rstrip("/")
-        self.auth = (email, api_token)
+        # site_url is the user-facing Atlassian site for clickable issue links.
+        # API-token mode: same as base_url. OAuth mode: passed explicitly
+        # (base_url is the OAuth proxy host, which doesn't render issues).
+        self.site_url = (site_url or self.base_url).rstrip("/")
+        self.access_token = access_token
+        if access_token:
+            self.auth = None
+        else:
+            self.auth = (email or "", api_token or "")
 
     def _headers(self) -> dict:
-        return {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
+        h = {"Accept": "application/json", "Content-Type": "application/json"}
+        if self.access_token:
+            h["Authorization"] = f"Bearer {self.access_token}"
+        return h
 
     def list_projects(self) -> list[JiraProject]:
         """Return up to 50 projects visible to the connected user. Pagination
         beyond 50 isn't a v1 concern — picker UX would need search anyway."""
         url = f"{self.base_url}/rest/api/3/project/search?maxResults=50"
         try:
-            r = httpx.get(url, auth=self.auth, headers=self._headers(), timeout=HTTP_TIMEOUT)
+            r = httpx.get(url, auth=self.auth, headers=self._headers(), timeout=HTTP_TIMEOUT)  # auth=None is fine
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"Could not reach Jira: {e}")
         if r.status_code == 401:
@@ -117,7 +145,8 @@ class JiraClient:
                 raise Exception(f"Jira create failed ({r.status_code}): {r.text[:200]}")
         body = r.json()
         key = body["key"]
-        return {"key": key, "url": f"{self.base_url}/browse/{key}"}
+        # Issue links go to the user-facing Atlassian site, not the OAuth proxy.
+        return {"key": key, "url": f"{self.site_url}/browse/{key}"}
 
     def subtask_type_for_project(self, project_key: str) -> str | None:
         """Find the project's sub-task issue-type name (M6.2.b).

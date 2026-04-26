@@ -22,7 +22,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select
 
 from auth.deps import CurrentUser, current_user
@@ -61,6 +62,7 @@ from models import (
 from services.byok import decrypt_secret, encrypt_secret, key_preview
 from services.github import GitHubClient, push_extraction as push_extraction_github
 from services.jira import JiraClient, push_extraction as push_extraction_jira
+from services import jira_oauth
 from services.linear import LinearClient, push_extraction as push_extraction_linear
 from services.notion import NotionClient, push_extraction as push_extraction_notion
 from services.slack import post_gaps as slack_post_gaps
@@ -141,11 +143,24 @@ def _get_connection(session: Session, user: CurrentUser, kind: str) -> Integrati
 
 
 def _decrypt_jira_config(row: IntegrationConnection) -> dict:
-    """Pull the connection JSON, decrypt the API token in place. Returns
-    `{base_url, email, api_token, default_project_key?}` ready to construct
-    a JiraClient. Raises 400 if the row is malformed (defensive — a write
-    that produced this shape is a bug)."""
+    """Pull the connection JSON and prepare it for `_jira_client_from_cfg`.
+
+    Two shapes are supported:
+      * API token (M6.2, default): `{base_url, email, api_token_encrypted, ...}`
+      * OAuth (M6.2.d): `{auth_type: 'oauth', cloud_id, site_url,
+        access_token_encrypted, refresh_token_encrypted, access_token_expires_at, ...}`
+
+    For OAuth, this function refreshes the access token in place when it's
+    near expiry and persists the new token back to the row (so subsequent
+    pushes don't have to re-refresh in the same minute).
+
+    Raises 400/401 with reconnect-friendly messages on unrecoverable failures.
+    """
     cfg = json.loads(row.config_json)
+    if cfg.get("auth_type") == "oauth":
+        return _decrypt_jira_oauth_config(row, cfg)
+
+    # API-token path — unchanged from M6.2.
     enc = cfg.get("api_token_encrypted")
     token = decrypt_secret(enc) if enc else None
     if not token:
@@ -158,8 +173,80 @@ def _decrypt_jira_config(row: IntegrationConnection) -> dict:
     return cfg
 
 
+def _decrypt_jira_oauth_config(row: IntegrationConnection, cfg: dict) -> dict:
+    """OAuth-path decrypt + auto-refresh access_token if near expiry."""
+    rt_enc = cfg.get("refresh_token_encrypted")
+    refresh_token = decrypt_secret(rt_enc) if rt_enc else None
+    if not refresh_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Saved Jira refresh token is unreadable. Reconnect in Settings.",
+        )
+    at_enc = cfg.get("access_token_encrypted")
+    access_token = decrypt_secret(at_enc) if at_enc else None
+
+    # Proactively refresh when close to expiry — saves a 401 round-trip.
+    if jira_oauth.is_access_token_stale(cfg.get("access_token_expires_at")):
+        try:
+            tokens = jira_oauth.refresh_access_token(refresh_token)
+        except HTTPException:
+            raise   # 401/502 already shaped for the route layer
+        access_token = tokens["access_token"]
+        # Atlassian may rotate the refresh_token — persist whatever they sent.
+        new_refresh = tokens.get("refresh_token") or refresh_token
+        cfg["access_token_encrypted"] = encrypt_secret(access_token)
+        cfg["refresh_token_encrypted"] = encrypt_secret(new_refresh)
+        cfg["access_token_expires_at"] = jira_oauth.expires_at_iso(tokens["expires_in"])
+        # Persist back so the next call benefits from the fresh token.
+        from db.session import engine as _engine
+        from sqlmodel import Session as _Session
+        with _Session(_engine) as s:
+            stale = s.get(type(row), (row.scope, row.scope_id, row.kind))
+            if stale is not None:
+                stale.config_json = json.dumps(cfg)
+                stale.updated_at = datetime.now(timezone.utc)
+                s.add(stale)
+                s.commit()
+
+    cfg["access_token"] = access_token
+    cfg["refresh_token"] = refresh_token
+    cfg.pop("access_token_encrypted", None)
+    cfg.pop("refresh_token_encrypted", None)
+    return cfg
+
+
+def _jira_client_from_cfg(cfg: dict) -> JiraClient:
+    """Construct a JiraClient from a decrypted connection cfg, branching
+    on `auth_type`. Centralised so every Jira route uses the same factory."""
+    if cfg.get("auth_type") == "oauth":
+        cloud_id = cfg.get("cloud_id")
+        site_url = cfg.get("site_url", "")
+        if not cloud_id:
+            raise HTTPException(status_code=400, detail="OAuth Jira connection missing cloud_id. Reconnect in Settings.")
+        return JiraClient(
+            base_url=f"https://api.atlassian.com/ex/jira/{cloud_id}",
+            access_token=cfg["access_token"],
+            site_url=site_url,
+        )
+    return JiraClient(base_url=cfg["base_url"], email=cfg["email"], api_token=cfg["api_token"])
+
+
 def _to_jira_read(row: IntegrationConnection) -> JiraConnectionRead:
+    """Render either auth shape into the same read response. OAuth rows
+    surface their site_url as base_url + a synthetic "OAuth" preview so
+    the Settings UI can branch on the placeholder without a separate
+    API for OAuth-specific reads."""
     cfg = json.loads(row.config_json)
+    if cfg.get("auth_type") == "oauth":
+        return JiraConnectionRead(
+            base_url=cfg.get("site_url", ""),
+            email="(OAuth)",
+            api_token_preview="••••OAuth",
+            default_project_key=cfg.get("default_project_key"),
+            scope=row.scope,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
     enc = cfg.get("api_token_encrypted")
     plain = decrypt_secret(enc) if enc else ""
     return JiraConnectionRead(
@@ -242,6 +329,102 @@ def delete_jira_connection(
     session.commit()
 
 
+# ---- Jira OAuth 3LO (M6.2.d) ---------------------------------------------
+
+
+@router.get("/api/integrations/jira/oauth/status")
+def get_jira_oauth_status() -> dict:
+    """Whether server-side OAuth credentials (client id/secret) are configured.
+
+    Frontend uses this to decide whether to render the "Connect with Atlassian"
+    button next to the existing API-token form. Public-shape (no secrets in
+    the response). Lives under the protected router so it inherits auth, but
+    returns the same answer for everyone — config status, not user state."""
+    return {"enabled": jira_oauth.is_enabled()}
+
+
+def _oauth_redirect_uri(request: Request) -> str:
+    """Build the absolute redirect URI for the callback. Uses the request's
+    own origin so dev (localhost:8000) and prod (your Render URL) both work
+    without per-env config — Atlassian app must list both as allowed."""
+    return f"{request.url.scheme}://{request.url.netloc}/api/integrations/jira/oauth/callback"
+
+
+@router.post("/api/integrations/jira/oauth/start")
+def start_jira_oauth(request: Request, user: UserDep) -> dict:
+    """Begin the OAuth flow. Returns the authorize URL the frontend should
+    redirect to. CSRF state is bound to the calling user via mint_state."""
+    if not jira_oauth.is_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Jira OAuth is not configured on this server. Use the API-token form instead.",
+        )
+    state = jira_oauth.mint_state(user.user_id)
+    redirect_uri = _oauth_redirect_uri(request)
+    return {"url": jira_oauth.authorize_url(state, redirect_uri), "state": state}
+
+
+# Callback is unauthenticated at the route layer because Atlassian redirects
+# the browser to it with no Authorization header. CSRF state binds it back
+# to the user who initiated the flow — without a valid state we return 400.
+# Lives under a separate (no-auth) router declared below.
+unauth_router = APIRouter(tags=["integrations"])
+
+
+@unauth_router.get("/api/integrations/jira/oauth/callback")
+def jira_oauth_callback(
+    request: Request,
+    session: SessionDep,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
+    """Atlassian redirects here after consent. We exchange the code for
+    tokens, fetch the user's first accessible Atlassian site, store the
+    OAuth-shape connection, then redirect to /settings."""
+    if not jira_oauth.is_enabled():
+        raise HTTPException(status_code=503, detail="Jira OAuth is not configured on this server.")
+    if error:
+        # User declined or Atlassian returned an error — bounce to settings
+        # with a query string so the UI can surface a toast.
+        return RedirectResponse(url=f"/settings?jira_oauth_error={error}", status_code=302)
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code/state in OAuth callback.")
+    user_id = jira_oauth.consume_state(state)
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="OAuth state expired or invalid. Restart the flow from Settings.",
+        )
+
+    redirect_uri = _oauth_redirect_uri(request)
+    tokens = jira_oauth.exchange_code(code, redirect_uri)
+    resources = jira_oauth.get_accessible_resources(tokens["access_token"])
+    if not resources:
+        raise HTTPException(
+            status_code=400,
+            detail="The connected Atlassian account has no accessible Jira sites.",
+        )
+    # First site by default (M6.2.d.b can offer a picker for users with multiple).
+    site = resources[0]
+
+    cfg = {
+        "auth_type": "oauth",
+        "access_token_encrypted": encrypt_secret(tokens["access_token"]),
+        "refresh_token_encrypted": encrypt_secret(tokens["refresh_token"]),
+        "access_token_expires_at": jira_oauth.expires_at_iso(tokens["expires_in"]),
+        "cloud_id": site["id"],
+        "site_url": site.get("url", ""),
+        "site_name": site.get("name", ""),
+        "default_project_key": None,
+    }
+    # OAuth callback can't ask the user where to install — default to user
+    # scope. Rotating to org-shared after the fact is a Settings-side action.
+    _upsert_connection(session, scope="user", scope_id=user_id, kind="jira", cfg=cfg)
+
+    return RedirectResponse(url="/settings?jira_oauth=connected", status_code=302)
+
+
 # ---- Jira projects (live fetch) -------------------------------------------
 
 
@@ -253,7 +436,7 @@ def list_jira_projects(session: SessionDep, user: UserDep):
     if row is None:
         raise HTTPException(status_code=400, detail="No Jira connection saved. Connect in Settings.")
     cfg = _decrypt_jira_config(row)
-    client = JiraClient(base_url=cfg["base_url"], email=cfg["email"], api_token=cfg["api_token"])
+    client = _jira_client_from_cfg(cfg)
     return client.list_projects()
 
 
@@ -279,7 +462,7 @@ def push_to_jira(
     if row is None:
         raise HTTPException(status_code=400, detail="No Jira connection saved. Connect in Settings.")
     cfg = _decrypt_jira_config(row)
-    client = JiraClient(base_url=cfg["base_url"], email=cfg["email"], api_token=cfg["api_token"])
+    client = _jira_client_from_cfg(cfg)
 
     if not (extraction.stories or []):
         raise HTTPException(status_code=400, detail="No stories to push.")

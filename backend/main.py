@@ -133,6 +133,10 @@ app.include_router(projects_router.router, dependencies=_protected_deps)
 app.include_router(me_router.router, dependencies=_protected_deps)
 app.include_router(comments_router.router, dependencies=_protected_deps)
 app.include_router(integrations_router.router, dependencies=_protected_deps)
+# M6.2.d — Jira OAuth callback is unauthenticated at the route layer
+# (Atlassian's browser redirect arrives without an Authorization header).
+# CSRF state validates the user inside the handler.
+app.include_router(integrations_router.unauth_router)
 app.include_router(api_tokens_router.router, dependencies=_protected_deps)
 # M4.6: share has split posture — owner endpoints are auth+ownership, the
 # public read uses token only. Mounted as two separate routers in share.py.
