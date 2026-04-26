@@ -38,12 +38,17 @@ from models import (
     LinearConnectionRead,
     LinearConnectionWrite,
     LinearTeam,
+    NotionConnectionRead,
+    NotionConnectionWrite,
+    NotionDatabase,
     PushToGitHubRequest,
     PushToGitHubResult,
     PushToJiraRequest,
     PushToJiraResult,
     PushToLinearRequest,
     PushToLinearResult,
+    PushToNotionRequest,
+    PushToNotionResult,
     PushToSlackRequest,
     PushToSlackResult,
     SlackConnectionRead,
@@ -53,6 +58,7 @@ from services.byok import decrypt_secret, encrypt_secret, key_preview
 from services.github import GitHubClient, push_extraction as push_extraction_github
 from services.jira import JiraClient, push_extraction as push_extraction_jira
 from services.linear import LinearClient, push_extraction as push_extraction_linear
+from services.notion import NotionClient, push_extraction as push_extraction_notion
 from services.slack import post_gaps as slack_post_gaps
 from services.scope import in_scope
 
@@ -563,3 +569,116 @@ def push_to_slack(
         gap_resolved_indexes=resolved_indexes,
     )
     return PushToSlackResult(posted_gap_count=posted)
+
+
+# ---- Notion connection (M6.5) ---------------------------------------------
+
+
+def _decrypt_notion_config(row: IntegrationConnection) -> dict:
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("token_encrypted")
+    token = decrypt_secret(enc) if enc else None
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="Saved Notion token is unreadable (master key may have rotated). Reconnect in Settings.",
+        )
+    cfg["token"] = token
+    cfg.pop("token_encrypted", None)
+    return cfg
+
+
+def _to_notion_read(row: IntegrationConnection) -> NotionConnectionRead:
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("token_encrypted")
+    plain = decrypt_secret(enc) if enc else ""
+    return NotionConnectionRead(
+        token_preview=key_preview(plain or ""),
+        default_database_id=cfg.get("default_database_id"),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/api/integrations/notion/connection", response_model=NotionConnectionRead | None)
+def get_notion_connection(session: SessionDep, user: UserDep):
+    row = _get_connection(session, user, "notion")
+    return _to_notion_read(row) if row else None
+
+
+@router.put("/api/integrations/notion/connection", response_model=NotionConnectionRead)
+def put_notion_connection(payload: NotionConnectionWrite, session: SessionDep, user: UserDep):
+    cfg = {
+        "token_encrypted": encrypt_secret((payload.token or "").strip()),
+        "default_database_id": (payload.default_database_id or None),
+    }
+    now = datetime.now(timezone.utc)
+
+    row = _get_connection(session, user, "notion")
+    if row is None:
+        row = IntegrationConnection(
+            scope="user",
+            scope_id=user.user_id,
+            kind="notion",
+            config_json=json.dumps(cfg),
+            created_at=now,
+            updated_at=now,
+        )
+    else:
+        row.config_json = json.dumps(cfg)
+        row.updated_at = now
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_notion_read(row)
+
+
+@router.delete("/api/integrations/notion/connection", status_code=204)
+def delete_notion_connection(session: SessionDep, user: UserDep) -> None:
+    row = _get_connection(session, user, "notion")
+    if row is None:
+        return
+    session.delete(row)
+    session.commit()
+
+
+@router.get("/api/integrations/notion/databases", response_model=list[NotionDatabase])
+def list_notion_databases(session: SessionDep, user: UserDep):
+    """Live fetch — also test-connection probe. Notion-specific gotcha:
+    if the integration hasn't been explicitly shared with any database
+    via Notion's "..." menu, this returns an empty list. The frontend
+    surfaces a doc link in that empty state."""
+    row = _get_connection(session, user, "notion")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No Notion connection saved. Connect in Settings.")
+    cfg = _decrypt_notion_config(row)
+    client = NotionClient(token=cfg["token"])
+    return client.list_databases()
+
+
+@router.post("/api/extractions/{extraction_id}/push/notion", response_model=PushToNotionResult)
+def push_to_notion(
+    extraction_id: str,
+    payload: PushToNotionRequest,
+    session: SessionDep,
+    user: UserDep,
+) -> PushToNotionResult:
+    extraction = session.get(Extraction, extraction_id)
+    if not in_scope(extraction, user):
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    row = _get_connection(session, user, "notion")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No Notion connection saved. Connect in Settings.")
+    cfg = _decrypt_notion_config(row)
+    client = NotionClient(token=cfg["token"])
+
+    if not (extraction.stories or []):
+        raise HTTPException(status_code=400, detail="No stories to push.")
+
+    return push_extraction_notion(
+        client,
+        extraction,
+        database_id=payload.database_id,
+        title_prop=payload.title_prop,
+    )

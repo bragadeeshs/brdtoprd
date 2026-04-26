@@ -116,7 +116,7 @@ function ExportMenu({ extraction, busy }) {
 /* M6.3 — Push menu. Mirrors ExportMenu (same dropdown shape) so users
  * recognize the pattern. Items only render when their callback exists,
  * so a future single-tracker connection still gets a clean menu. */
-function PushMenu({ onPushToJira, onPushToLinear, onPushToGitHub, onPushToSlack, busy }) {
+function PushMenu({ onPushToJira, onPushToLinear, onPushToGitHub, onPushToSlack, onPushToNotion, busy }) {
   const [open, setOpen] = useState(false)
   const popRef = React.useRef(null)
   const btnRef = React.useRef(null)
@@ -180,6 +180,9 @@ function PushMenu({ onPushToJira, onPushToLinear, onPushToGitHub, onPushToSlack,
           )}
           {typeof onPushToSlack === 'function' && (
             <ExportMenuItem onClick={fire(onPushToSlack)} title="Slack" hint="Send unresolved gaps" />
+          )}
+          {typeof onPushToNotion === 'function' && (
+            <ExportMenuItem onClick={fire(onPushToNotion)} title="Notion" hint="One page per story" />
           )}
         </div>
       )}
@@ -364,6 +367,7 @@ export default function TopBar({
   onPushToLinear,
   onPushToGitHub,
   onPushToSlack,
+  onPushToNotion,
 }) {
   const [versions, setVersions] = useState([])
 
@@ -481,12 +485,13 @@ export default function TopBar({
               Share
             </Button>
           )}
-          {(typeof onPushToJira === 'function' || typeof onPushToLinear === 'function' || typeof onPushToGitHub === 'function' || typeof onPushToSlack === 'function') && (
+          {(typeof onPushToJira === 'function' || typeof onPushToLinear === 'function' || typeof onPushToGitHub === 'function' || typeof onPushToSlack === 'function' || typeof onPushToNotion === 'function') && (
             <PushMenu
               onPushToJira={onPushToJira}
               onPushToLinear={onPushToLinear}
               onPushToGitHub={onPushToGitHub}
               onPushToSlack={onPushToSlack}
+              onPushToNotion={onPushToNotion}
               busy={loading || rerunning}
             />
           )}

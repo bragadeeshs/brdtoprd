@@ -545,3 +545,45 @@ class PushToSlackRequest(BaseModel):
 class PushToSlackResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     posted_gap_count: int
+
+
+# ----- Integrations (M6.5 — Notion) -----
+
+
+class NotionConnectionRead(BaseModel):
+    """Notion connection metadata. Token preview only — never the raw token."""
+    model_config = ConfigDict(extra="forbid")
+    token_preview: str       # ••••XYZK
+    default_database_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotionConnectionWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: str       # secret_… from notion.so/my-integrations
+    default_database_id: str | None = None
+
+
+class NotionDatabase(BaseModel):
+    """One Notion database visible to the integration. `title_prop` is the
+    name of the title column (varies — users often rename "Name" to
+    "Story", "Item", etc.) — discovered server-side and shipped to the
+    frontend so the picker can submit it back unchanged on push."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    title: str
+    title_prop: str
+    url: str = ""
+
+
+class PushToNotionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    database_id: str
+    title_prop: str       # echoed back from the picker so backend doesn't re-fetch
+
+
+class PushToNotionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pushed: list[PushedIssue]
+    failed: list[dict]

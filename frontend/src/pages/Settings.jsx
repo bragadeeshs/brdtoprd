@@ -3,19 +3,23 @@ import {
   deleteGitHubConnectionApi,
   deleteJiraConnectionApi,
   deleteLinearConnectionApi,
+  deleteNotionConnectionApi,
   deleteSlackConnectionApi,
   getGitHubConnectionApi,
   getJiraConnectionApi,
   getLinearConnectionApi,
   getMeSettingsApi,
+  getNotionConnectionApi,
   getSlackConnectionApi,
   listGitHubReposApi,
   listJiraProjectsApi,
   listLinearTeamsApi,
+  listNotionDatabasesApi,
   putGitHubConnectionApi,
   putJiraConnectionApi,
   putLinearConnectionApi,
   putMeSettingsApi,
+  putNotionConnectionApi,
   putSlackConnectionApi,
   testApiKey,
 } from '../api.js'
@@ -1070,6 +1074,141 @@ function SlackConnectionForm() {
   )
 }
 
+/* M6.5 — Notion connection form. Single token input + a prominent
+ * reminder that the user must explicitly share each target database
+ * with the integration in Notion (the API can't see databases that
+ * weren't shared, no matter how broad the token's scope). */
+function NotionConnectionForm() {
+  const { toast } = useToast()
+  const [conn, setConn] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [token, setToken] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    getNotionConnectionApi()
+      .then((c) => { if (alive) setConn(c) })
+      .catch((e) => { if (alive) toast.error(e.message || 'Could not load Notion connection') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const startEdit = () => { setToken(''); setEditing(true) }
+  const cancelEdit = () => { setEditing(false); setToken('') }
+
+  const save = async () => {
+    if (!token.trim()) {
+      toast.error('Token required')
+      return
+    }
+    setBusy(true)
+    try {
+      const c = await putNotionConnectionApi({ token: token.trim() })
+      setConn(c)
+      setEditing(false)
+      setToken('')
+      toast.success('Notion connection saved')
+    } catch (e) {
+      toast.error(e.message || 'Could not save Notion connection')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const test = async () => {
+    setBusy(true)
+    try {
+      const dbs = await listNotionDatabasesApi()
+      if (dbs.length === 0) {
+        toast.error('Connection works but no databases visible — share one with the integration in Notion.')
+      } else {
+        toast.success(`Connection OK — ${dbs.length} database${dbs.length === 1 ? '' : 's'} visible`)
+      }
+    } catch (e) {
+      toast.error(e.message || 'Connection test failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect Notion? You can reconnect any time.')) return
+    setBusy(true)
+    try {
+      await deleteNotionConnectionApi()
+      setConn(null)
+      toast.success('Notion disconnected')
+    } catch (e) {
+      toast.error(e.message || 'Could not disconnect')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading Notion connection…
+      </div>
+    )
+  }
+
+  if (conn && !editing) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
+          <div style={{ color: 'var(--text-soft)' }}>Token</div>
+          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{conn.token_preview}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <Button variant="secondary" size="sm" onClick={test} disabled={busy}>
+            {busy ? 'Testing…' : 'Test'}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={startEdit} disabled={busy}>Edit</Button>
+          <Button variant="ghost" size="sm" onClick={disconnect} disabled={busy}>Disconnect</Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Create an internal integration at{' '}
+        <a
+          href="https://www.notion.so/my-integrations"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--accent-strong)' }}
+        >
+          notion.so/my-integrations
+        </a>
+        {' '}→ copy the secret. <strong>Then in Notion, open each database you want to push to → "..." → "Add connections" → pick this integration.</strong> Notion's API can't see databases the integration wasn't explicitly added to.
+      </p>
+      <FieldLabel>Integration token</FieldLabel>
+      <input
+        type="password"
+        placeholder="secret_…"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
+        </Button>
+        {(conn || editing) && (
+          <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={busy}>Cancel</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function FieldLabel({ children }) {
   return (
     <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-soft)' }}>
@@ -1219,6 +1358,14 @@ export default function Settings() {
           description="Send unresolved gaps to a Slack channel as a Block Kit message. Webhook is bound to one channel — connect different webhooks for different channels."
         >
           <SlackConnectionForm />
+        </Section>
+        <Section
+          icon={<Plug size={16} />}
+          tone="accent"
+          title="Integrations · Notion"
+          description="Push extracted user stories into a Notion database. Title goes in the database's title column; the rest of the story (As-a / I want / so that, criteria, source quote) renders as page body blocks."
+        >
+          <NotionConnectionForm />
         </Section>
       </div>
     </div>

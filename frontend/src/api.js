@@ -436,6 +436,48 @@ export async function pushToSlackApi(extractionId, { include_resolved = false } 
   return jsonOrThrow(res)
 }
 
+// ---------- integrations: Notion (M6.5) ----------
+
+export async function getNotionConnectionApi() {
+  const res = await apiFetch('/api/integrations/notion/connection')
+  return jsonOrThrow(res)
+}
+
+/** Save / replace. Body: {token, default_database_id?}. */
+export async function putNotionConnectionApi(body) {
+  const res = await apiFetch('/api/integrations/notion/connection', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+export async function deleteNotionConnectionApi() {
+  const res = await apiFetch('/api/integrations/notion/connection', { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
+/** Databases visible to the integration. Empty list usually means the
+ *  user hasn't shared any databases with the integration in Notion yet. */
+export async function listNotionDatabasesApi() {
+  const res = await apiFetch('/api/integrations/notion/databases')
+  return jsonOrThrow(res)
+}
+
+/** Push every story as a Notion page in `database_id`. `title_prop` comes
+ *  back from listNotionDatabasesApi — we forward it unchanged so the
+ *  backend doesn't have to re-fetch the database schema. */
+export async function pushToNotionApi(extractionId, { database_id, title_prop }) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/notion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ database_id, title_prop }),
+  })
+  return jsonOrThrow(res)
+}
+
 // ---------- comments (M4.5) ----------
 
 /** All comments on an extraction. Oldest first. */
