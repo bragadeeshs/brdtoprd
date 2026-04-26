@@ -19,5 +19,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.js'],
     css: false,
+    // M0.1.3 — keep Playwright specs out of Vitest's discovery; Playwright
+    // owns the e2e/ tree (different runner, different test() signature).
+    exclude: ['node_modules', 'dist', 'e2e/**'],
   },
 })

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
 import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
@@ -42,7 +42,7 @@ const STAGES = [
   { key: 'gaps',    label: 'Identifying gaps + questions',   threshold: 5500 },
 ]
 
-function LoadingState({ filename, usage }) {
+function LoadingState({ filename, usage, onStop }) {
   const out = usage?.output ?? 0
   const inn = usage?.input ?? 0
   const max = usage?.max ?? 16000
@@ -197,6 +197,38 @@ function LoadingState({ filename, usage }) {
           </div>
         )}
 
+        {/* M5.4.2 — Stop button. Aborts the SSE fetch; backend cleans up
+         *  the Anthropic stream as the FastAPI generator unwinds. */}
+        {typeof onStop === 'function' && (
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={onStop}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: 11.5,
+                fontWeight: 500,
+                padding: '4px 12px',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--danger-strong, #b91c1c)'
+                e.currentTarget.style.borderColor = 'var(--danger-strong, #b91c1c)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-muted)'
+                e.currentTarget.style.borderColor = 'var(--border-strong)'
+              }}
+            >
+              Stop
+            </button>
+          </div>
+        )}
+
         <style>{`@keyframes slide { 0%{left:-40%} 50%{left:50%} 100%{left:120%} }`}</style>
       </Card>
     </div>
@@ -342,6 +374,17 @@ function AuthedApp() {
     return m
   }, [projects])
 
+  // M5.4.2 — AbortController for the in-flight extract. Held in a ref so
+  // re-renders don't reset it; the Stop button calls .abort() to cancel
+  // the SSE stream. Backend cleanup happens automatically when fetch
+  // disconnects (FastAPI's StreamingResponse generator unwinds, the
+  // `with anthropic.messages.stream(...)` block exits, Anthropic call
+  // is dropped).
+  const extractAbortRef = useRef(null)
+  const handleStopExtract = () => {
+    extractAbortRef.current?.abort()
+  }
+
   const handleExtract = async ({ file, text, filename }) => {
     setLoading(true)
     setStreamUsage(null)
@@ -349,13 +392,15 @@ function AuthedApp() {
     const inputChars = (text?.length) || (file?.size || 0)
     const startedAt = Date.now()
     track('extraction_started', { input_chars: inputChars })
+    const controller = new AbortController()
+    extractAbortRef.current = controller
     try {
       // M5.3 — streaming variant. Backend still persists + returns the
       // canonical full record on `complete`; we just get usage ticks along
       // the way which feed the LoadingState progress card.
       const record = await extractStream(
         { file, text, filename },
-        { onUsage: (u) => setStreamUsage(u) },
+        { onUsage: (u) => setStreamUsage(u), signal: controller.signal },
       )
       setExtraction(record)
       setExtractionId(record?.id || null)
@@ -368,18 +413,23 @@ function AuthedApp() {
         duration_ms: Date.now() - startedAt,
       })
     } catch (e) {
-      // Paywall trips through here as a 403/413/429 with structured payload —
-      // show the upgrade modal instead of a toast.
-      if (e.paywall) setPaywall(e.paywall)
-      else toast.error(e.message || 'Extraction failed')
-      track('extraction_failed', {
-        reason: e.paywall?.reason || 'error',
-        status: e.status || 0,
-      })
+      // M5.4.2 — abort lands here as DOMException(name='AbortError'). User
+      // hit Stop on purpose, so don't toast it as a failure; just clean up.
+      if (e?.name === 'AbortError') {
+        toast.success('Extraction cancelled')
+        track('extraction_failed', { reason: 'aborted', status: 0 })
+      } else if (e.paywall) {
+        setPaywall(e.paywall)
+        track('extraction_failed', { reason: e.paywall?.reason || 'paywall', status: e.status || 0 })
+      } else {
+        toast.error(e.message || 'Extraction failed')
+        track('extraction_failed', { reason: 'error', status: e.status || 0 })
+      }
     } finally {
       setLoading(false)
       setStreamUsage(null)
       setPendingName('')
+      extractAbortRef.current = null
     }
   }
 
@@ -554,7 +604,13 @@ function AuthedApp() {
                 {!extraction && !loading && (
                   <EmptyState onSubmit={handleExtract} loading={loading} />
                 )}
-                {loading && <LoadingState filename={pendingName} usage={streamUsage} />}
+                {loading && (
+                  <LoadingState
+                    filename={pendingName}
+                    usage={streamUsage}
+                    onStop={handleStopExtract}
+                  />
+                )}
                 {extraction && !loading && (
                   <div className="body">
                     <SourcePane extraction={extraction} selectedQuote={selectedQuote} />

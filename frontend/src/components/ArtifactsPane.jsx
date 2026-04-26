@@ -668,6 +668,30 @@ export default function ArtifactsPane({
     return () => observer.disconnect()
   }, [extraction])
 
+  // M5.4.1 — preserve scroll-to-section across rerun / version-switch.
+  // When the extraction *id* changes (rerun creates a new row, or user
+  // picks a different version) the panes re-render with new content of
+  // different height, so the browser's pixel-pinned scrollTop lands on
+  // unrelated content. Scroll back to the section the user was viewing
+  // before the swap. Patches + regen keep the same id, so this is a
+  // no-op for those flows (which is what we want — they edit in place).
+  const lastIdRef = useRef(extraction.id)
+  useEffect(() => {
+    if (extraction.id === lastIdRef.current) return
+    lastIdRef.current = extraction.id
+    if (activeTab === 'brief') return  // top of pane is already correct
+    const el = document.getElementById(`sec-${activeTab}`)
+    if (!el) return
+    // Suppress observer flicker the same way onTabClick does.
+    userClickRef.current = true
+    // Wait one frame so the new content has a chance to lay out before we
+    // measure positions for scrollIntoView.
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'auto', block: 'start' })
+      setTimeout(() => { userClickRef.current = false }, 100)
+    })
+  }, [extraction.id, activeTab])
+
   const onTabClick = (id) => {
     const el = document.getElementById(`sec-${id}`)
     if (!el) return

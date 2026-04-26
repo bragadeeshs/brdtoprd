@@ -100,8 +100,17 @@ export async function extract({ file, text, filename, projectId } = {}) {
  * Callbacks (all optional):
  *   onStart({id, filename})  — fired once when the server confirms
  *   onUsage({input, output, max}) — fired repeatedly as tokens arrive
+ *
+ * M5.4.2 — pass `signal` (an AbortController.signal) to support a Stop
+ * button. When aborted: fetch rejects, the SSE reader unwinds, we throw
+ * an Error with `name: 'AbortError'` so the caller can show "Stopped"
+ * instead of "Failed". Backend sees the disconnected client + cleans up
+ * the Anthropic stream as the generator's `with` block exits.
  */
-export async function extractStream({ file, text, filename, projectId } = {}, { onStart, onUsage } = {}) {
+export async function extractStream(
+  { file, text, filename, projectId } = {},
+  { onStart, onUsage, signal } = {},
+) {
   const { readSSE } = await import('./lib/sse.js')
 
   const form = new FormData()
@@ -110,7 +119,7 @@ export async function extractStream({ file, text, filename, projectId } = {}, { 
   if (filename) form.append('filename', filename)
   if (projectId) form.append('project_id', projectId)
 
-  const res = await apiFetch('/api/extract/stream', { method: 'POST', body: form })
+  const res = await apiFetch('/api/extract/stream', { method: 'POST', body: form, signal })
   if (!res.ok) {
     // Pre-flight error — let jsonOrThrow build the (possibly paywall) Error.
     return jsonOrThrow(res)
@@ -119,12 +128,19 @@ export async function extractStream({ file, text, filename, projectId } = {}, { 
   let finalRecord = null
   let streamError = null
 
-  await readSSE(res, (name, data) => {
-    if (name === 'start') onStart?.(data)
-    else if (name === 'usage') onUsage?.(data)
-    else if (name === 'complete') finalRecord = data
-    else if (name === 'error') streamError = data
-  })
+  try {
+    await readSSE(res, (name, data) => {
+      if (name === 'start') onStart?.(data)
+      else if (name === 'usage') onUsage?.(data)
+      else if (name === 'complete') finalRecord = data
+      else if (name === 'error') streamError = data
+    })
+  } catch (err) {
+    // Abort flows through here as a DOMException with name "AbortError".
+    // Re-throw with the standard contract so the caller can branch.
+    if (err?.name === 'AbortError') throw err
+    throw err
+  }
 
   if (streamError) {
     const err = new Error(streamError.detail || 'Extraction failed')
