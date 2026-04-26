@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { downloadExtractionDocxApi, listVersionsApi } from '../api.js'
 import { track } from '../lib/analytics.js'
 import { buildCsv, buildJson, buildMarkdown, downloadFile, exportBaseName } from '../lib/exports.js'
@@ -232,10 +233,21 @@ function fmtTime(iso) {
  */
 function VersionPicker({ versions, currentId, onPick }) {
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
   const current = versions.find((v) => v.id === currentId)
   const total = versions.length
 
   if (total <= 1 || !current) return null
+
+  // M7.6 — open the diff route. Convention: idA = older / left side,
+  // idB = current. Sorts by version so v2 → v5 reads naturally.
+  const compare = (otherId) => {
+    setOpen(false)
+    const a = versions.find((v) => v.id === otherId)
+    const b = current
+    const [oldId, newId] = (a && b && a.version < b.version) ? [a.id, b.id] : [b.id, otherId]
+    navigate(`/compare/${oldId}/${newId}`)
+  }
 
   return (
     <div style={{ position: 'relative' }}>
@@ -300,47 +312,81 @@ function VersionPicker({ versions, currentId, onPick }) {
             {versions.map((v) => {
               const isCurrent = v.id === currentId
               return (
-                <button
+                <div
                   key={v.id}
-                  type="button"
-                  onClick={() => { setOpen(false); onPick(v.id) }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
                     width: '100%',
-                    padding: '6px 10px',
                     background: isCurrent ? 'var(--accent-soft)' : 'transparent',
-                    border: 'none',
                     borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    fontSize: 12.5,
-                    color: 'var(--text-strong)',
-                    textAlign: 'left',
-                    fontFamily: 'inherit',
                   }}
                   onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = 'var(--bg-hover)' }}
                   onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = 'transparent' }}
                 >
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => { setOpen(false); onPick(v.id) }}
                     style={{
-                      width: 22,
-                      flexShrink: 0,
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 11,
-                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flex: 1,
+                      padding: '6px 10px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      fontSize: 12.5,
+                      color: 'var(--text-strong)',
+                      textAlign: 'left',
+                      fontFamily: 'inherit',
                     }}
                   >
-                    v{v.version}
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, color: 'var(--text-strong)' }}>{fmtTime(v.created_at)}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {v.live ? v.model_used : 'mock'}
-                    </div>
-                  </span>
-                  {isCurrent && <Check size={13} style={{ color: 'var(--accent-strong)', flexShrink: 0 }} />}
-                </button>
+                    <span
+                      style={{
+                        width: 22,
+                        flexShrink: 0,
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 11,
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      v{v.version}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, color: 'var(--text-strong)' }}>{fmtTime(v.created_at)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {v.live ? v.model_used : 'mock'}
+                      </div>
+                    </span>
+                    {isCurrent && <Check size={13} style={{ color: 'var(--accent-strong)', flexShrink: 0 }} />}
+                  </button>
+                  {/* M7.6 — Compare link, hidden on the current row (no
+                   *  comparing v3 to v3). Quiet styling so it doesn't
+                   *  pull attention from the primary "switch to" action. */}
+                  {!isCurrent && (
+                    <button
+                      type="button"
+                      onClick={() => compare(v.id)}
+                      title={`Compare v${v.version} with current`}
+                      style={{
+                        marginRight: 6,
+                        padding: '4px 8px',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--accent-strong)',
+                        cursor: 'pointer',
+                        fontSize: 11,
+                        fontWeight: 500,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      Compare
+                    </button>
+                  )}
+                </div>
               )
             })}
           </div>

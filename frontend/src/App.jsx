@@ -20,6 +20,7 @@ import Documents from './pages/Documents.jsx'
 import Project from './pages/Project.jsx'
 import Settings from './pages/Settings.jsx'
 import ShareView from './pages/ShareView.jsx'
+import CompareView from './pages/CompareView.jsx'
 import SignInPage from './pages/SignInPage.jsx'
 import SignUpPage from './pages/SignUpPage.jsx'
 import PaywallModal from './components/PaywallModal.jsx'
@@ -652,6 +653,7 @@ function AuthedApp() {
           />
           <Route path="/documents" element={<Documents />} />
           <Route path="/projects/:id" element={<Project />} />
+          <Route path="/compare/:idA/:idB" element={<CompareView />} />
           {/* Account uses hash routing inside Clerk's UserProfile, so the
               react-router path matches both /account and /account/* */}
           <Route path="/account/*" element={<Account />} />
