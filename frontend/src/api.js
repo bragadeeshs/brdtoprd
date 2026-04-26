@@ -85,6 +85,56 @@ export async function extract({ file, text, filename, projectId } = {}) {
   return jsonOrThrow(res)
 }
 
+/**
+ * Streaming variant of extract (M5.3). Same input shape; instead of
+ * returning the final record, dispatches SSE events through callbacks
+ * and resolves with the final ExtractionRecord on `complete`.
+ *
+ * Pre-flight failures (paywall, oversize, bad file type) come back as
+ * normal HTTPErrors *before* streaming starts (response.ok=false) — we
+ * convert those via jsonOrThrow so callers get the same `err.paywall`
+ * shape as the non-streaming endpoint. Stream-time errors (rate limit,
+ * model crash) arrive as `error` SSE events and reject with the same
+ * Error shape.
+ *
+ * Callbacks (all optional):
+ *   onStart({id, filename})  — fired once when the server confirms
+ *   onUsage({input, output, max}) — fired repeatedly as tokens arrive
+ */
+export async function extractStream({ file, text, filename, projectId } = {}, { onStart, onUsage } = {}) {
+  const { readSSE } = await import('./lib/sse.js')
+
+  const form = new FormData()
+  if (file) form.append('file', file, file.name)
+  if (text) form.append('text', text)
+  if (filename) form.append('filename', filename)
+  if (projectId) form.append('project_id', projectId)
+
+  const res = await apiFetch('/api/extract/stream', { method: 'POST', body: form })
+  if (!res.ok) {
+    // Pre-flight error — let jsonOrThrow build the (possibly paywall) Error.
+    return jsonOrThrow(res)
+  }
+
+  let finalRecord = null
+  let streamError = null
+
+  await readSSE(res, (name, data) => {
+    if (name === 'start') onStart?.(data)
+    else if (name === 'usage') onUsage?.(data)
+    else if (name === 'complete') finalRecord = data
+    else if (name === 'error') streamError = data
+  })
+
+  if (streamError) {
+    const err = new Error(streamError.detail || 'Extraction failed')
+    err.status = streamError.status || 500
+    throw err
+  }
+  if (!finalRecord) throw new Error('Stream ended without a complete event')
+  return finalRecord
+}
+
 /** List extraction summaries. Newest first. */
 export async function listExtractionsApi({ q, projectId, limit, offset } = {}) {
   const params = new URLSearchParams()

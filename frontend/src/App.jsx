@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization } from '@clerk/clerk-react'
-import { extract, getMePlanApi, listProjectsApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extractStream, getMePlanApi, listProjectsApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -23,14 +23,40 @@ import GapsRail from './components/GapsRail.jsx'
 import { Card, IconTile, Spinner } from './components/primitives.jsx'
 import { Sparkles, Check } from './components/icons.jsx'
 
-function LoadingState({ filename }) {
-  const steps = [
-    ['Parsing document', true],
-    ['Extracting actors & scope', true],
-    ['Drafting user stories', 'active'],
-    ['Checking for gaps & ambiguities', false],
-    ['Composing acceptance criteria', false],
-  ]
+/* M5.3 — progress card for an in-flight streaming extraction. `usage` is
+ * `{input, output, max}` from the backend's SSE `usage` events; null until
+ * the first frame arrives (then we show "Connecting to Claude…" instead of
+ * a fake spinner). Stage markers tick as cumulative output_tokens cross
+ * eyeballed thresholds — not perfectly accurate (model writes sections in
+ * a slightly different order on different inputs) but accurate enough that
+ * users see real progress, not theatre. */
+const STAGES = [
+  { key: 'brief',   label: 'Reading source + drafting brief', threshold: 0 },
+  { key: 'actors',  label: 'Extracting actors',              threshold: 200 },
+  { key: 'stories', label: 'Composing user stories',         threshold: 500 },
+  { key: 'nfrs',    label: 'Capturing non-functional reqs',  threshold: 4000 },
+  { key: 'gaps',    label: 'Identifying gaps + questions',   threshold: 5500 },
+]
+
+function LoadingState({ filename, usage }) {
+  const out = usage?.output ?? 0
+  const inn = usage?.input ?? 0
+  const max = usage?.max ?? 16000
+  // Determinate progress when we have data; while null, fall back to the
+  // indeterminate slide animation so the bar isn't stuck at 0%.
+  const pct = usage ? Math.min(100, Math.round((out / max) * 100)) : null
+
+  // For the stage list: every stage whose threshold is at or below the current
+  // output is "done"; the next one above is "active"; everything above that is
+  // pending. Once everything is done (out > last threshold), show the last one
+  // as still active — we don't know exactly when the response finishes from the
+  // client's POV until `complete` arrives.
+  const lastDoneIdx = STAGES.reduce(
+    (acc, s, i) => (out > s.threshold ? i : acc),
+    -1,
+  )
+  const activeIdx = Math.min(lastDoneIdx + 1, STAGES.length - 1)
+
   return (
     <div
       style={{
@@ -60,57 +86,64 @@ function LoadingState({ filename }) {
               Reading {filename || 'your document'}…
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-              Claude is structuring the source into a clean brief.
+              {usage
+                ? `Claude is writing — ${out.toLocaleString()} of ${max.toLocaleString()} output tokens`
+                : 'Connecting to Claude…'}
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
-          {steps.map(([label, state], i) => (
-            <div
-              key={i}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                fontSize: 13,
-                color: state === false ? 'var(--text-soft)' : 'var(--text)',
-              }}
-            >
-              {state === true ? (
-                <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 999,
-                    background: 'var(--success)',
-                    color: 'white',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Check size={12} />
-                </span>
-              ) : state === 'active' ? (
-                <Spinner size={18} />
-              ) : (
-                <div
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 999,
-                    border: '1.5px solid var(--border-strong)',
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-              <span>{label}</span>
-            </div>
-          ))}
+          {STAGES.map((s, i) => {
+            const state = i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending'
+            return (
+              <div
+                key={s.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  fontSize: 13,
+                  color: state === 'pending' ? 'var(--text-soft)' : 'var(--text)',
+                }}
+              >
+                {state === 'done' ? (
+                  <span
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      background: 'var(--success)',
+                      color: 'white',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Check size={12} />
+                  </span>
+                ) : state === 'active' ? (
+                  <Spinner size={18} />
+                ) : (
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      border: '1.5px solid var(--border-strong)',
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <span>{s.label}</span>
+              </div>
+            )
+          })}
         </div>
 
+        {/* Progress bar: determinate (fill width) once we have token data,
+         *  indeterminate slide before the first `usage` event arrives. */}
         <div
           style={{
             height: 6,
@@ -120,18 +153,46 @@ function LoadingState({ filename }) {
             position: 'relative',
           }}
         >
+          {pct != null ? (
+            <div
+              style={{
+                width: `${pct}%`,
+                height: '100%',
+                background: 'var(--accent)',
+                transition: 'width .25s ease-out',
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                position: 'absolute',
+                left: '-30%',
+                width: '40%',
+                height: '100%',
+                background:
+                  'linear-gradient(90deg, transparent, var(--accent), transparent)',
+                animation: 'slide 1.6s ease-in-out infinite',
+              }}
+            />
+          )}
+        </div>
+
+        {usage && (
           <div
             style={{
-              position: 'absolute',
-              left: '-30%',
-              width: '40%',
-              height: '100%',
-              background:
-                'linear-gradient(90deg, transparent, var(--accent), transparent)',
-              animation: 'slide 1.6s ease-in-out infinite',
+              marginTop: 10,
+              fontSize: 11,
+              color: 'var(--text-soft)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontFamily: 'var(--font-mono)',
             }}
-          />
-        </div>
+          >
+            <span>in: {inn.toLocaleString()}</span>
+            <span>out: {out.toLocaleString()} / {max.toLocaleString()}</span>
+          </div>
+        )}
+
         <style>{`@keyframes slide { 0%{left:-40%} 50%{left:50%} 100%{left:120%} }`}</style>
       </Card>
     </div>
@@ -160,6 +221,9 @@ function AuthedApp() {
   const [extraction, setExtraction] = useState(null)
   const [extractionId, setExtractionId] = useState(null)
   const [loading, setLoading] = useState(false)
+  // M5.3 — streaming progress for the in-flight extract. {input, output, max}
+  // is updated as the SSE `usage` events arrive; cleared on done/error.
+  const [streamUsage, setStreamUsage] = useState(null)
   const [rerunning, setRerunning] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
   // M5.2 — when a user clicks a source_quote on an artifact, this gets set
@@ -267,10 +331,16 @@ function AuthedApp() {
 
   const handleExtract = async ({ file, text, filename }) => {
     setLoading(true)
+    setStreamUsage(null)
     setPendingName(file ? file.name : filename)
     try {
-      // Backend persists and returns the full record (with id + provenance).
-      const record = await extract({ file, text, filename })
+      // M5.3 — streaming variant. Backend still persists + returns the
+      // canonical full record on `complete`; we just get usage ticks along
+      // the way which feed the LoadingState progress card.
+      const record = await extractStream(
+        { file, text, filename },
+        { onUsage: (u) => setStreamUsage(u) },
+      )
       setExtraction(record)
       setExtractionId(record?.id || null)
       refreshPlan()  // M3.5 — usage count just bumped; refresh sidebar bar
@@ -282,6 +352,7 @@ function AuthedApp() {
       else toast.error(e.message || 'Extraction failed')
     } finally {
       setLoading(false)
+      setStreamUsage(null)
       setPendingName('')
     }
   }
@@ -390,7 +461,7 @@ function AuthedApp() {
                 {!extraction && !loading && (
                   <EmptyState onSubmit={handleExtract} loading={loading} />
                 )}
-                {loading && <LoadingState filename={pendingName} />}
+                {loading && <LoadingState filename={pendingName} usage={streamUsage} />}
                 {extraction && !loading && (
                   <div className="body">
                     <SourcePane extraction={extraction} selectedQuote={selectedQuote} />

@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -13,6 +14,7 @@ load_dotenv(Path(__file__).parent / ".env")
 import anthropic
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
 from docx import Document
@@ -37,6 +39,7 @@ from services.extractions import (
 from services.limits import enforce_limits
 from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
+from services.streaming import stream_extraction
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 SUPPORTED_EXT = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst"}
@@ -262,6 +265,155 @@ async def extract(
         usage=usage,
     )
     return extraction_to_record(row)
+
+
+# ---- Streaming extraction (M5.3) ------------------------------------------
+#
+# Same request shape as /api/extract; same pre-flight (ownership / paywall /
+# input parse). Differences:
+#   * The Claude call streams instead of blocking. The route emits Server-Sent
+#     Events as the model writes — `usage` events with cumulative input/output
+#     token counts so the UI can show a real progress bar; one final `complete`
+#     event with the full ExtractionRecord.
+#   * Errors during the Claude call land as `error` SSE events (not HTTP
+#     errors), because the response status was already 200 by the time
+#     streaming started. Pre-flight errors still come back as normal 4xx.
+#
+# We persist + record_usage *inside* the generator, after streaming completes
+# and before the final SSE frame, so the frontend's `complete` payload carries
+# the canonical persisted record (with id + created_at) and the usage row is
+# in the DB before /api/me/plan returns its next answer.
+
+
+def _sse(event: str, data: dict | str) -> bytes:
+    """Format one SSE frame. Two newlines terminate; we always include both
+    `event:` and `data:` so clients can dispatch on event type."""
+    payload = data if isinstance(data, str) else json.dumps(data, default=str)
+    return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+
+
+@app.post("/api/extract/stream", dependencies=[Depends(welcome_check)])
+async def extract_stream(
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[CurrentUser, Depends(current_user)],
+    file: UploadFile | None = File(default=None),
+    text: str | None = Form(default=None),
+    filename: str | None = Form(default=None),
+    project_id: str | None = Form(default=None),
+    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
+    x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
+):
+    # ----- pre-flight: identical guards to /api/extract --------------------
+    if file is None and not text:
+        raise HTTPException(status_code=400, detail="Provide either a file or text.")
+
+    upload_bytes: bytes | None = None
+    if file is not None:
+        data = await file.read()
+        if len(data) > MAX_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File over {MAX_BYTES // (1024 * 1024)} MB limit.",
+            )
+        ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+        if ext and ext not in SUPPORTED_EXT:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported file type {ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
+            )
+        try:
+            raw_text = _parse_file(file.filename or "uploaded", data)
+        except Exception as e:
+            log.exception("file parse failed")
+            raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
+        source_name = file.filename or "uploaded"
+        upload_bytes = data
+    else:
+        raw_text = text or ""
+        source_name = filename or "pasted_text.txt"
+
+    if not raw_text.strip():
+        raise HTTPException(status_code=422, detail="No readable text in the input.")
+
+    if project_id:
+        from db.models import Project as ProjectModel
+        from services.scope import in_scope
+        proj = session.get(ProjectModel, project_id)
+        if not in_scope(proj, user):
+            raise HTTPException(status_code=400, detail="Unknown project_id")
+
+    effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
+    effective_model = x_storyforge_model or stored_model
+
+    # Plan limits — still raise as HTTP errors so the existing paywall modal
+    # path catches them. These fire before the SSE stream opens.
+    enforce_limits(session, user, raw_text=raw_text, model=effective_model)
+
+    # Mint id up front so the start event can carry it (the frontend uses it
+    # to wire the in-flight extraction to the persisted row on `complete`).
+    extraction_id = mint_extraction_id()
+    source_path: str | None = None
+    if upload_bytes is not None:
+        try:
+            source_path = save_upload(extraction_id, source_name, upload_bytes)
+        except OSError as e:
+            log.exception("upload save failed")
+            raise HTTPException(status_code=500, detail=f"Could not store uploaded file: {e}")
+
+    # ----- the SSE generator ------------------------------------------------
+    def event_gen():
+        yield _sse("start", {"id": extraction_id, "filename": source_name})
+        try:
+            for ev in stream_extraction(
+                filename=source_name,
+                raw_text=raw_text,
+                api_key=effective_key,
+                model=effective_model,
+            ):
+                etype = ev["type"]
+                if etype == "usage":
+                    yield _sse("usage", {"input": ev["input"], "output": ev["output"], "max": ev["max"]})
+                elif etype == "error":
+                    # Stream-time error — surface to client + stop. No persistence.
+                    yield _sse("error", {"status": ev["status"], "detail": ev["detail"]})
+                    return
+                elif etype == "complete":
+                    # Persist + record_usage right before the terminal frame
+                    # so the record returned to the frontend is canonical.
+                    row = persist_extraction(
+                        session,
+                        result=ev["result"],
+                        model_used=ev["model_used"],
+                        user_id=user.user_id,
+                        org_id=user.org_id,
+                        project_id=project_id or None,
+                        extraction_id=extraction_id,
+                        source_file_path=source_path,
+                    )
+                    record_usage(
+                        session,
+                        user_id=user.user_id,
+                        org_id=user.org_id,
+                        extraction_id=row.id,
+                        action="extract",
+                        model=ev["model_used"],
+                        live=ev["result"].live,
+                        usage=ev["usage"],
+                    )
+                    yield _sse("complete", extraction_to_record(row).model_dump(mode="json"))
+        except Exception as e:
+            # Last-resort safety net — anything inside the generator that
+            # isn't already converted to an `error` event lands here.
+            log.exception("extract_stream generator crashed")
+            yield _sse("error", {"status": 500, "detail": f"Extraction failed: {e}"})
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        # Disable proxy buffering so each frame ships as soon as we yield it.
+        # Render's load balancer respects this; nginx/Cloudflare also honour it.
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
 
 
 # Mount built frontend last so /api/* routes take precedence. Only mounts when
