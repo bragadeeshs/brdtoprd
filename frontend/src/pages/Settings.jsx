@@ -1522,14 +1522,14 @@ function TokenRow({ token, isLast, onRevoke }) {
   )
 }
 
-/* M7.2 — manage saved few-shot examples. Read-only first version: list +
- * toggle enable/disable + delete. Authoring is via the "Save as example"
- * TopBar button (captures from a live extraction); hand-editing the
- * expected_payload JSON is intentionally not in this v1 — the JSON shape
- * is structured enough that a textarea is more dangerous than useful. */
+/* M7.2 — manage saved few-shot examples. List + toggle + delete + edit.
+ * Authoring is via the "Save as example" TopBar button (captures from a
+ * live extraction); M7.2.c adds an inline JSON editor so power users can
+ * hand-tune the captured payload without re-extracting. */
 function FewShotExamplesSection() {
   const { toast } = useToast()
   const [rows, setRows] = useState(null)
+  const [editingId, setEditingId] = useState(null)   // M7.2.c — open editor row id
 
   const refresh = async () => {
     try { setRows(await listFewShotExamplesApi()) }
@@ -1556,6 +1556,10 @@ function FewShotExamplesSection() {
     } catch (e) {
       toast.error(e.message || 'Could not delete')
     }
+  }
+  const onEditSaved = async () => {
+    setEditingId(null)
+    await refresh()
   }
 
   if (rows === null) {
@@ -1593,40 +1597,163 @@ function FewShotExamplesSection() {
             const sCount = r.expected_payload?.stories?.length || 0
             const nCount = r.expected_payload?.nfrs?.length || 0
             const gCount = r.expected_payload?.gaps?.length || 0
+            const isEditing = editingId === r.id
             return (
               <div
                 key={r.id}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 14px',
                   borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--border)',
                   opacity: r.enabled ? 1 : 0.6,
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
-                    {r.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2 }}>
-                    {r.input_text.length.toLocaleString()} chars input · {sCount}st / {nCount}nfr / {gCount}gap output
-                  </div>
-                </div>
-                <Badge tone={r.enabled ? 'success' : 'neutral'} size="sm">
-                  {r.enabled ? 'Active' : 'Inactive'}
-                </Badge>
-                <Button
-                  variant="ghost" size="sm"
-                  onClick={() => toggle(r)}
-                  title={r.enabled ? 'Disable (still saved, just not sent to Claude)' : 'Enable'}
+                <div
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px',
+                  }}
                 >
-                  {r.enabled ? 'Disable' : 'Enable'}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => remove(r)}>Delete</Button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
+                      {r.name}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2 }}>
+                      {r.input_text.length.toLocaleString()} chars input · {sCount}st / {nCount}nfr / {gCount}gap output
+                    </div>
+                  </div>
+                  <Badge tone={r.enabled ? 'success' : 'neutral'} size="sm">
+                    {r.enabled ? 'Active' : 'Inactive'}
+                  </Badge>
+                  <Button
+                    variant="ghost" size="sm"
+                    onClick={() => toggle(r)}
+                    title={r.enabled ? 'Disable (still saved, just not sent to Claude)' : 'Enable'}
+                  >
+                    {r.enabled ? 'Disable' : 'Enable'}
+                  </Button>
+                  <Button
+                    variant="ghost" size="sm"
+                    onClick={() => setEditingId(isEditing ? null : r.id)}
+                  >
+                    {isEditing ? 'Close' : 'Edit'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => remove(r)}>Delete</Button>
+                </div>
+                {isEditing && (
+                  <FewShotEditPanel example={r} onSaved={onEditSaved} onCancel={() => setEditingId(null)} />
+                )}
               </div>
             )
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+/* M7.2.c — inline JSON editor for an existing few-shot example. The
+ * expected_payload is JSON-validated client-side before save (so a
+ * malformed paste fails fast with a clear message); backend revalidates
+ * via Pydantic on the PATCH so a malicious bypass still gets rejected.
+ *
+ * Layout: name + input_text + expected_payload textarea, all editable.
+ * Show JSON parse errors inline. Cancel discards local edits. */
+function FewShotEditPanel({ example, onSaved, onCancel }) {
+  const { toast } = useToast()
+  const [name, setName] = useState(example.name)
+  const [inputText, setInputText] = useState(example.input_text)
+  const [payloadJson, setPayloadJson] = useState(
+    JSON.stringify(example.expected_payload, null, 2),
+  )
+  const [busy, setBusy] = useState(false)
+  const [parseError, setParseError] = useState(null)
+
+  // Re-validate JSON on every keystroke so the user sees the error inline.
+  const onPayloadChange = (v) => {
+    setPayloadJson(v)
+    try {
+      JSON.parse(v)
+      setParseError(null)
+    } catch (e) {
+      setParseError(e.message)
+    }
+  }
+
+  const save = async () => {
+    let parsed
+    try {
+      parsed = JSON.parse(payloadJson)
+    } catch (e) {
+      toast.error(`Invalid JSON: ${e.message}`)
+      return
+    }
+    setBusy(true)
+    try {
+      await patchFewShotExampleApi(example.id, {
+        name: name.trim(),
+        input_text: inputText,
+        expected_payload: parsed,
+      })
+      toast.success('Example updated')
+      onSaved?.()
+    } catch (e) {
+      toast.error(e.message || 'Could not save')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{
+      padding: '0 14px 14px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+      background: 'var(--bg-subtle)',
+    }}>
+      <FieldLabel>Name</FieldLabel>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        disabled={busy}
+        maxLength={100}
+        style={inputStyle}
+      />
+      <FieldLabel>Input text (the source doc that should produce the expected payload)</FieldLabel>
+      <textarea
+        value={inputText}
+        onChange={(e) => setInputText(e.target.value)}
+        disabled={busy}
+        rows={4}
+        style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 12, resize: 'vertical' }}
+      />
+      <FieldLabel>
+        Expected payload (JSON — must match ExtractionPayload shape: {`{brief, actors, stories, nfrs, gaps}`})
+      </FieldLabel>
+      <textarea
+        value={payloadJson}
+        onChange={(e) => onPayloadChange(e.target.value)}
+        disabled={busy}
+        rows={14}
+        spellCheck={false}
+        style={{
+          ...inputStyle,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 11.5,
+          lineHeight: 1.5,
+          resize: 'vertical',
+          borderColor: parseError ? 'var(--danger-strong, #b91c1c)' : 'var(--border-strong)',
+        }}
+      />
+      {parseError && (
+        <div style={{ fontSize: 11.5, color: 'var(--danger-ink)', fontFamily: 'var(--font-mono)' }}>
+          JSON error: {parseError}
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <Button variant="secondary" size="sm" onClick={onCancel} disabled={busy}>Cancel</Button>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy || !!parseError}>
+          {busy ? 'Saving…' : 'Save changes'}
+        </Button>
+      </div>
     </div>
   )
 }

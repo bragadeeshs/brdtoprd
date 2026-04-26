@@ -401,7 +401,7 @@ Effort tags: `S` (≤2h), `M` (half-day), `L` (1–2 days), `XL` (3+ days)
 ## M7.2 Few-shot examples
 - [x] **M7.2.1** Per-user `FewShotExample` table; up to 3 enabled at once; CRUD + capture-from-extraction shortcut; format helpers produce correct shape for both `messages.parse` (assistant=JSON string) and tool-use streaming (assistant `tool_use` + `tool_result`); applied to `/api/extract` + `/api/extract/stream` + `/rerun` (regen skipped — different tool schema). UX: TopBar "Save as example" captures live state; Settings page lists / toggles / deletes — `backend/db/models.py`, `backend/services/few_shot.py`, `backend/extract.py`, `backend/services/streaming.py`, `backend/routers/me.py`, `frontend/src/components/SaveExampleModal.jsx`, `Settings.jsx`, `TopBar.jsx` — M
 - [ ] **M7.2.b** Org-shared examples (everyone in org X gets the same demos) — schema-ready (`org_id` column exists), routes deferred — — S
-- [ ] **M7.2.c** Edit `expected_payload` JSON in Settings (currently capture-only — re-capture replaces) — — S
+- [x] **M7.2.c** Inline JSON editor on each example row in Settings — name + input_text + expected_payload textarea with live JSON validation; backend revalidates via Pydantic on PATCH — `frontend/src/pages/Settings.jsx` — S
 
 ## M7.3 OCR for scanned PDFs
 - [x] **M7.3.1** When pypdf returns near-empty text on a PDF upload, fall back to Claude vision (PDF document content block) for transcription; OCR'd plaintext flows into the existing extract pipeline; separate `usage_log.action="ocr"` row for cost transparency — `backend/services/ocr.py`, `backend/main.py` — M
