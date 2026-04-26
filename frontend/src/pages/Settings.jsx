@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import {
   createApiTokenApi,
+  createPromptTemplateApi,
   deleteFewShotExampleApi,
   deleteGitHubConnectionApi,
   deleteJiraConnectionApi,
   deleteLinearConnectionApi,
   deleteNotionConnectionApi,
+  deletePromptTemplateApi,
   deleteSlackConnectionApi,
   getGitHubConnectionApi,
   getJiraConnectionApi,
@@ -19,7 +21,9 @@ import {
   listJiraProjectsApi,
   listLinearTeamsApi,
   listNotionDatabasesApi,
+  listPromptTemplatesApi,
   patchFewShotExampleApi,
+  patchPromptTemplateApi,
   putGitHubConnectionApi,
   putJiraConnectionApi,
   putLinearConnectionApi,
@@ -31,6 +35,7 @@ import {
 } from '../api.js'
 import { copyToClipboard } from '../lib/clipboard.js'
 import { useApp } from '../lib/AppContext.jsx'
+import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import { Eye, FileText, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
@@ -1229,85 +1234,261 @@ function NotionConnectionForm() {
  * a "template gallery" UX in v1; one suffix per user covers the
  * 90% case (analysts have one preferred style across all extractions).
  */
-function PromptTemplateForm({ initial, onSaved }) {
+/* M7.1.b — list-based template manager. Replaces the single-textarea
+ * `PromptTemplateForm`. Active template is highlighted; only one per
+ * (user, org) can be active at a time (backend enforces). M7.1.c lets
+ * users mark a template as org-shared via a checkbox at create time
+ * (visible only when an active Clerk org is set). */
+function PromptTemplatesSection({ orgId }) {
   const { toast } = useToast()
-  const [draft, setDraft] = useState(initial || '')
-  const [saving, setSaving] = useState(false)
+  const [rows, setRows] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [creating, setCreating] = useState(false)
 
-  // Re-sync if the parent's saved value changes (e.g. after another
-  // section's save refreshes settings).
-  useEffect(() => { setDraft(initial || '') }, [initial])
+  const refresh = async () => {
+    try { setRows(await listPromptTemplatesApi()) }
+    catch (e) { toast.error(e.message || 'Could not load templates') }
+  }
+  useEffect(() => { refresh() }, [])
 
-  const dirty = (draft || '') !== (initial || '')
-  const charCount = draft.length
-  const overLimit = charCount > 4000
-
-  const save = async () => {
-    if (overLimit) {
-      toast.error('Template too long (max 4000 chars)')
-      return
-    }
-    setSaving(true)
+  const activate = async (row) => {
     try {
-      // Empty string clears the column server-side; non-empty saves it.
-      const updated = await putMeSettingsApi({ prompt_suffix: draft })
-      onSaved?.(updated)
-      toast.success(draft ? 'Template saved' : 'Template cleared')
-    } catch (e) {
-      toast.error(e.message || 'Could not save template')
-    } finally {
-      setSaving(false)
-    }
+      await patchPromptTemplateApi(row.id, { is_active: true })
+      await refresh()
+      toast.success(`Activated "${row.name}"`)
+    } catch (e) { toast.error(e.message || 'Could not activate') }
+  }
+  const deactivate = async (row) => {
+    try {
+      await patchPromptTemplateApi(row.id, { is_active: false })
+      await refresh()
+    } catch (e) { toast.error(e.message || 'Could not deactivate') }
+  }
+  const remove = async (row) => {
+    if (!window.confirm(`Delete template "${row.name}"?`)) return
+    try {
+      await deletePromptTemplateApi(row.id)
+      await refresh()
+      toast.success('Template deleted')
+    } catch (e) { toast.error(e.message || 'Could not delete') }
   }
 
-  const clear = () => {
-    setDraft('')
+  if (rows === null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading templates…
+      </div>
+    )
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Multiple named templates; one is active at a time. The active template is appended
+        to the system prompt on every extract / rerun / regen. Org-shared templates
+        (marked with {' '}<Badge tone="info" size="sm">org</Badge>) apply to every member of your
+        active workspace; personal templates are yours only.
+      </p>
+
+      {rows.length === 0 ? (
+        <div style={{
+          padding: '14px 16px', fontSize: 12.5, color: 'var(--text-soft)',
+          fontStyle: 'italic', textAlign: 'center',
+          background: 'var(--bg-subtle)', border: '1px dashed var(--border)',
+          borderRadius: 'var(--radius)',
+        }}>
+          No templates yet — create one below.
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex', flexDirection: 'column',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+        }}>
+          {rows.map((r, i) => {
+            const isEditing = editingId === r.id
+            return (
+              <div key={r.id} style={{
+                borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--border)',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 14px',
+                  background: r.is_active ? 'var(--accent-soft)' : 'transparent',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
+                      {r.name}
+                      {r.org_id && <Badge tone="info" size="sm">org</Badge>}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2 }}>
+                      {r.content.length.toLocaleString()} chars · updated {new Date(r.updated_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <Badge tone={r.is_active ? 'success' : 'neutral'} size="sm">
+                    {r.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                  {r.is_active ? (
+                    <Button variant="ghost" size="sm" onClick={() => deactivate(r)}>Deactivate</Button>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => activate(r)}>Activate</Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => setEditingId(isEditing ? null : r.id)}>
+                    {isEditing ? 'Close' : 'Edit'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => remove(r)}>Delete</Button>
+                </div>
+                {isEditing && (
+                  <PromptTemplateEditPanel
+                    template={r}
+                    onSaved={async () => { setEditingId(null); await refresh() }}
+                    onCancel={() => setEditingId(null)}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {creating ? (
+        <PromptTemplateEditPanel
+          template={null}
+          orgId={orgId}
+          onSaved={async () => { setCreating(false); await refresh() }}
+          onCancel={() => setCreating(false)}
+        />
+      ) : (
+        <div>
+          <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>
+            + New template
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* Inline editor — used both for editing an existing template (template != null)
+ * and for creating a new one (template === null). The latter exposes the
+ * org-share checkbox; editing an existing template can't change scope. */
+function PromptTemplateEditPanel({ template, orgId, onSaved, onCancel }) {
+  const { toast } = useToast()
+  const [name, setName] = useState(template?.name || '')
+  const [content, setContent] = useState(template?.content || '')
+  const [isActive, setIsActive] = useState(template?.is_active || false)
+  const [shareWithOrg, setShareWithOrg] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const isNew = template === null
+  const overLimit = content.length > 4000
+
+  const save = async () => {
+    if (!name.trim()) { toast.error('Name required'); return }
+    if (overLimit) { toast.error('Content too long (max 4000 chars)'); return }
+    setBusy(true)
+    try {
+      if (isNew) {
+        await createPromptTemplateApi({
+          name: name.trim(),
+          content,
+          is_active: isActive,
+          // M7.1.c — pass org_id only when checkbox set + orgId present.
+          // Backend rejects mismatches as a 400.
+          org_id: shareWithOrg && orgId ? orgId : null,
+        })
+        toast.success('Template created')
+      } else {
+        await patchPromptTemplateApi(template.id, {
+          name: name.trim(),
+          content,
+        })
+        toast.success('Template updated')
+      }
+      onSaved?.()
+    } catch (e) {
+      toast.error(e.message || 'Could not save')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{
+      padding: isNew ? 12 : '0 14px 14px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+      background: 'var(--bg-subtle)',
+      border: isNew ? '1px solid var(--border)' : 'none',
+      borderRadius: isNew ? 'var(--radius)' : 0,
+    }}>
+      <FieldLabel>Name</FieldLabel>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        disabled={busy}
+        maxLength={100}
+        placeholder="e.g. job-stories, pci-strict, default"
+        style={inputStyle}
+      />
+      <FieldLabel>
+        Template content (appended to the system prompt) · {content.length.toLocaleString()} / 4,000
+      </FieldLabel>
       <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        disabled={saving}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        disabled={busy}
         rows={6}
-        placeholder={`Examples:
+        placeholder={isNew
+          ? `Examples:
 
 Use 'job story' format instead of 'user story':
   When [situation], I want to [motivation], so I can [outcome].
 
-Tag any NFR mentioning compliance (PCI-DSS, GDPR, HIPAA) with severity: high.
-
-All actors must be roles or systems, never specific people.`}
+Tag any NFR mentioning compliance (PCI-DSS, GDPR, HIPAA) with severity: high.`
+          : ''}
         style={{
           ...inputStyle,
-          minHeight: 140,
           fontFamily: 'var(--font-mono)',
-          fontSize: 12.5,
-          lineHeight: 1.55,
+          fontSize: 12.5, lineHeight: 1.55,
           resize: 'vertical',
           borderColor: overLimit ? 'var(--danger-strong, #b91c1c)' : 'var(--border-strong)',
         }}
       />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{
-          fontSize: 11.5,
-          color: overLimit ? 'var(--danger-ink)' : 'var(--text-soft)',
-          fontFamily: 'var(--font-mono)',
-        }}>
-          {charCount.toLocaleString()} / 4,000
-          {overLimit && ' · over limit'}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {draft && (
-            <Button variant="ghost" size="sm" onClick={clear} disabled={saving}>
-              Clear
-            </Button>
+      {isNew && (
+        <>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            fontSize: 12.5, cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              disabled={busy}
+            />
+            Activate immediately (deactivates the previous active template)
+          </label>
+          {orgId && (
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 12.5, cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={shareWithOrg}
+                onChange={(e) => setShareWithOrg(e.target.checked)}
+                disabled={busy}
+              />
+              Share with everyone in this workspace
+            </label>
           )}
-          <Button variant="primary" size="sm" onClick={save} disabled={saving || !dirty || overLimit}>
-            {saving ? 'Saving…' : initial ? 'Save changes' : 'Save'}
-          </Button>
-        </div>
+        </>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <Button variant="secondary" size="sm" onClick={onCancel} disabled={busy}>Cancel</Button>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy || overLimit || !name.trim()}>
+          {busy ? 'Saving…' : isNew ? 'Create template' : 'Save changes'}
+        </Button>
       </div>
     </div>
   )
@@ -1779,6 +1960,8 @@ const inputStyle = {
 
 export default function Settings() {
   const { toast } = useToast()
+  const { organization } = useOrganization()
+  const orgId = organization?.id || null   // M7.1.c — passed to template/example forms for org-share
   const [serverSettings, setServerSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -1871,19 +2054,10 @@ export default function Settings() {
         <Section
           icon={<FileText size={16} />}
           tone="purple"
-          title="Prompt template"
-          description="Append your own instructions to the system prompt — house style for stories, naming conventions, severity rules. Applied to every extraction, rerun, and regen."
+          title="Prompt templates"
+          description="Save multiple named templates; activate one at a time. Append your own instructions to the system prompt — house style for stories, naming conventions, severity rules."
         >
-          {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
-              <Spinner size={14} /> Loading…
-            </div>
-          ) : (
-            <PromptTemplateForm
-              initial={serverSettings?.prompt_suffix || ''}
-              onSaved={(s) => setServerSettings(s)}
-            />
-          )}
+          <PromptTemplatesSection orgId={orgId} />
         </Section>
         <Section
           icon={<Sparkles size={16} />}

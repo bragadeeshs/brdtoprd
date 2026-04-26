@@ -487,6 +487,39 @@ export async function pushToNotionApi(extractionId, { database_id, title_prop })
   return jsonOrThrow(res)
 }
 
+// ---------- prompt templates (M7.1.b) ----------
+
+export async function listPromptTemplatesApi() {
+  const res = await apiFetch('/api/me/prompt-templates')
+  return jsonOrThrow(res)
+}
+
+/** Body: {name, content, is_active?, org_id?} — pass org_id to create
+ *  an org-shared template (must match your active Clerk org context). */
+export async function createPromptTemplateApi(body) {
+  const res = await apiFetch('/api/me/prompt-templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+export async function patchPromptTemplateApi(id, patch) {
+  const res = await apiFetch(`/api/me/prompt-templates/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  return jsonOrThrow(res)
+}
+
+export async function deletePromptTemplateApi(id) {
+  const res = await apiFetch(`/api/me/prompt-templates/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
 // ---------- few-shot examples (M7.2) ----------
 
 /** List the user's saved few-shot examples (enabled + disabled). */

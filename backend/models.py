@@ -613,6 +613,35 @@ class ApiTokenCreateResponse(BaseModel):
     created_at: datetime
 
 
+class PromptTemplateRead(BaseModel):
+    """Returned by GET / POST / PATCH /api/me/prompt-templates."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    content: str
+    is_active: bool
+    org_id: str | None = None      # M7.1.c — null = user-scoped (v1 default)
+    created_at: datetime
+    updated_at: datetime
+
+
+class PromptTemplateCreate(BaseModel):
+    """POST body. `is_active=True` flips the previous active template off."""
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    content: str
+    is_active: bool = False
+    org_id: str | None = None      # M7.1.c — must match caller's active org if set
+
+
+class PromptTemplatePatch(BaseModel):
+    """PATCH body — any field optional."""
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = None
+    content: str | None = None
+    is_active: bool | None = None
+
+
 class FewShotExampleRead(BaseModel):
     """Returned by GET / POST / PATCH /api/me/few-shot-examples."""
     model_config = ConfigDict(extra="forbid")

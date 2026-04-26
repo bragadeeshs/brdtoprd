@@ -395,8 +395,8 @@ Effort tags: `S` (≤2h), `M` (half-day), `L` (1–2 days), `XL` (3+ days)
 
 ## M7.1 Custom prompt template
 - [x] **M7.1.1** Per-user `prompt_suffix` saved on UserSettings; appended to the system prompt by all three Claude call sites (extract, stream, regen) — `backend/db/models.py`, `backend/services/prompts.py`, `backend/extract.py`, `backend/services/streaming.py`, `backend/services/regen.py`, `frontend/src/pages/Settings.jsx` — S
-- [ ] **M7.1.b** Multiple named templates per user ("default", "pci-strict", "job-stories") — — M
-- [ ] **M7.1.c** Org-shared templates (everyone in org X uses the same suffix unless overridden) — — S
+- [x] **M7.1.b** Multiple named templates per user — new `PromptTemplate` table; resolver picks active row first, falls back to legacy `user_settings.prompt_suffix`. List-based Settings UI replaces the single textarea — `backend/db/models.py`, `backend/services/prompts.py`, `backend/routers/me.py`, `frontend/src/pages/Settings.jsx` — M
+- [x] **M7.1.c** Org-shared templates — `org_id` column on `PromptTemplate`; resolver fall-through (user-active → org-active → legacy); Settings checkbox at create time when an active Clerk org is set. Backend rejects mismatched org_id with 400 — `backend/routers/me.py`, `backend/services/prompts.py` — S
 
 ## M7.2 Few-shot examples
 - [x] **M7.2.1** Per-user `FewShotExample` table; up to 3 enabled at once; CRUD + capture-from-extraction shortcut; format helpers produce correct shape for both `messages.parse` (assistant=JSON string) and tool-use streaming (assistant `tool_use` + `tool_result`); applied to `/api/extract` + `/api/extract/stream` + `/rerun` (regen skipped — different tool schema). UX: TopBar "Save as example" captures live state; Settings page lists / toggles / deletes — `backend/db/models.py`, `backend/services/few_shot.py`, `backend/extract.py`, `backend/services/streaming.py`, `backend/routers/me.py`, `frontend/src/components/SaveExampleModal.jsx`, `Settings.jsx`, `TopBar.jsx` — M

@@ -251,7 +251,7 @@ async def extract(
 
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
-    suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
+    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
     examples = resolve_enabled_examples(session, user.user_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source_name,
@@ -385,7 +385,7 @@ async def extract_stream(
     # M7.1 — resolve the user's saved prompt suffix during pre-flight (while
     # the request-scoped session is still alive). Snapshot into a local so
     # the generator's fresh session doesn't have to refetch.
-    effective_suffix = resolve_prompt_suffix(session, user.user_id)
+    effective_suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)
     # M7.2 — same lifecycle reasoning for few-shot examples. Snapshot a
     # plain list of (id, name, input_text, expected_payload) so the
     # generator doesn't reach into the closing session.

@@ -16,21 +16,51 @@ from __future__ import annotations
 
 import logging
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from db.models import UserSettings
+from db.models import PromptTemplate, UserSettings
 
 log = logging.getLogger("storyforge.prompts")
 
 
-def resolve_prompt_suffix(session: Session | None, user_id: str | None) -> str | None:
-    """Return the user's saved prompt suffix, or None. Tolerant of:
-      - Missing session (some test paths) → None
-      - Missing user_id (mock mode in tests) → None
-      - Missing UserSettings row → None (treat as "no suffix")
+def resolve_prompt_suffix(
+    session: Session | None,
+    user_id: str | None,
+    org_id: str | None = None,
+) -> str | None:
+    """Return the active prompt-suffix content, or None.
+
+    M7.1.b — resolution order:
+      1. User-scoped active PromptTemplate (highest priority)
+      2. Org-scoped active PromptTemplate (M7.1.c — applies to all org members)
+      3. Legacy `user_settings.prompt_suffix` (M7.1 single-slot, kept for back-compat)
+
+    Tolerant of missing session / user_id / row → None at every step.
     """
     if not session or not user_id:
         return None
+
+    # M7.1.b — user's active template wins
+    user_active = session.exec(
+        select(PromptTemplate)
+        .where(PromptTemplate.user_id == user_id)
+        .where(PromptTemplate.org_id.is_(None))   # type: ignore[union-attr]
+        .where(PromptTemplate.is_active == True)  # noqa: E712
+    ).first()
+    if user_active and user_active.content:
+        return user_active.content
+
+    # M7.1.c — fall back to org-shared active template
+    if org_id:
+        org_active = session.exec(
+            select(PromptTemplate)
+            .where(PromptTemplate.org_id == org_id)
+            .where(PromptTemplate.is_active == True)  # noqa: E712
+        ).first()
+        if org_active and org_active.content:
+            return org_active.content
+
+    # Legacy back-compat: M7.1's single-slot column
     row = session.get(UserSettings, user_id)
     if row is None or not row.prompt_suffix:
         return None

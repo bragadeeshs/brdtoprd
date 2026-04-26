@@ -21,7 +21,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from auth.deps import CurrentUser, current_user
-from db.models import Extraction, FewShotExample, GapState, Project, UsageLog, UserSettings
+from db.models import Extraction, FewShotExample, GapState, Project, PromptTemplate, UsageLog, UserSettings
 from db.session import get_session
 from services.extractions import _mint_id
 from services.few_shot import MAX_ENABLED as MAX_FEW_SHOT_ENABLED
@@ -35,6 +35,9 @@ from models import (
     LegacyAdoptResult,
     LegacyCount,
     PlanRead,
+    PromptTemplateCreate,
+    PromptTemplatePatch,
+    PromptTemplateRead,
     UsageBucket,
     UsageByModel,
     UsageSummary,
@@ -576,5 +579,168 @@ def delete_few_shot_example(example_id: str, session: SessionDep, user: UserDep)
     row = session.get(FewShotExample, example_id)
     if row is None or row.user_id != user.user_id:
         raise HTTPException(status_code=404, detail="Example not found")
+    session.delete(row)
+    session.commit()
+
+
+# ============================================================================
+# M7.1.b — Multiple named prompt templates
+# ============================================================================
+#
+# Replaces M7.1's single `user_settings.prompt_suffix` slot with multiple-
+# named-templates-per-user. Resolver in services/prompts.py picks the active
+# row first, falls back to org-scoped active (M7.1.c) then to legacy suffix.
+#
+# Activation invariant: at most one row per (user_id, org_id) is is_active=True.
+# The activate path flips the previous active off in the same transaction.
+
+
+def _to_template_read(row: PromptTemplate) -> PromptTemplateRead:
+    return PromptTemplateRead(
+        id=row.id,
+        name=row.name,
+        content=row.content,
+        is_active=row.is_active,
+        org_id=row.org_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _deactivate_others(
+    session: Session, user_id: str, org_id: str | None, except_id: str | None = None
+) -> None:
+    """Flip the previously-active template (if any) to inactive. Scoped to
+    (user_id, org_id) so org-shared and personal active states are
+    independent. Caller is responsible for committing."""
+    stmt = (
+        select(PromptTemplate)
+        .where(PromptTemplate.user_id == user_id)
+        .where(PromptTemplate.is_active == True)  # noqa: E712
+    )
+    # NULL == NULL doesn't match in SQL; use is_() / equality split.
+    if org_id is None:
+        stmt = stmt.where(PromptTemplate.org_id.is_(None))   # type: ignore[union-attr]
+    else:
+        stmt = stmt.where(PromptTemplate.org_id == org_id)
+    for row in session.exec(stmt).all():
+        if except_id is not None and row.id == except_id:
+            continue
+        row.is_active = False
+        row.updated_at = datetime.now(timezone.utc)
+        session.add(row)
+
+
+@router.get("/prompt-templates", response_model=list[PromptTemplateRead])
+def list_prompt_templates(session: SessionDep, user: UserDep) -> list[PromptTemplateRead]:
+    """List the user's templates plus any org-scoped templates visible to
+    this scope. Active templates appear first, then by created_at.
+
+    Org-scope rule (M7.1.c): a template with org_id set is visible to
+    every member of that org; a template with org_id=NULL is personal."""
+    user_rows = session.exec(
+        select(PromptTemplate)
+        .where(PromptTemplate.user_id == user.user_id)
+        .where(PromptTemplate.org_id.is_(None))  # type: ignore[union-attr]
+    ).all()
+    org_rows: list[PromptTemplate] = []
+    if user.org_id:
+        org_rows = session.exec(
+            select(PromptTemplate)
+            .where(PromptTemplate.org_id == user.org_id)
+        ).all()
+    rows = list(user_rows) + list(org_rows)
+    rows.sort(key=lambda r: (not r.is_active, r.created_at))
+    return [_to_template_read(r) for r in rows]
+
+
+@router.post("/prompt-templates", response_model=PromptTemplateRead, status_code=201)
+def create_prompt_template(
+    payload: PromptTemplateCreate, session: SessionDep, user: UserDep
+) -> PromptTemplateRead:
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name cannot be empty")
+    if len(name) > 100:
+        raise HTTPException(status_code=400, detail="name too long (max 100 chars)")
+    if len(payload.content) > 4000:
+        raise HTTPException(status_code=400, detail="content too long (max 4000 chars)")
+
+    # M7.1.c: org_id must match the caller's active org if set. Stops a
+    # user from creating templates "for" an org they're not in (or from
+    # outside any org).
+    if payload.org_id is not None and payload.org_id != user.org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="org_id must match your active org context.",
+        )
+
+    if payload.is_active:
+        _deactivate_others(session, user.user_id, payload.org_id)
+
+    row = PromptTemplate(
+        id=_mint_id("tpl"),
+        user_id=user.user_id,
+        org_id=payload.org_id,
+        name=name,
+        content=payload.content,
+        is_active=payload.is_active,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_template_read(row)
+
+
+@router.patch("/prompt-templates/{template_id}", response_model=PromptTemplateRead)
+def patch_prompt_template(
+    template_id: str, patch: PromptTemplatePatch, session: SessionDep, user: UserDep
+) -> PromptTemplateRead:
+    row = session.get(PromptTemplate, template_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # Permission: own row, OR org-shared row in your active org. Last condition
+    # is permissive — any org member can edit org-shared templates in v1.
+    # Tighten to org_role=admin once we surface it.
+    is_own = row.user_id == user.user_id and row.org_id is None
+    is_org_visible = row.org_id is not None and row.org_id == user.org_id
+    if not (is_own or is_org_visible):
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if patch.name is not None:
+        n = patch.name.strip()
+        if not n:
+            raise HTTPException(status_code=400, detail="name cannot be empty")
+        if len(n) > 100:
+            raise HTTPException(status_code=400, detail="name too long (max 100 chars)")
+        row.name = n
+    if patch.content is not None:
+        if len(patch.content) > 4000:
+            raise HTTPException(status_code=400, detail="content too long (max 4000 chars)")
+        row.content = patch.content
+
+    if patch.is_active is True and not row.is_active:
+        _deactivate_others(session, row.user_id, row.org_id, except_id=row.id)
+        row.is_active = True
+    elif patch.is_active is False and row.is_active:
+        row.is_active = False
+
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_template_read(row)
+
+
+@router.delete("/prompt-templates/{template_id}", status_code=204)
+def delete_prompt_template(template_id: str, session: SessionDep, user: UserDep) -> None:
+    row = session.get(PromptTemplate, template_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    is_own = row.user_id == user.user_id and row.org_id is None
+    is_org_visible = row.org_id is not None and row.org_id == user.org_id
+    if not (is_own or is_org_visible):
+        raise HTTPException(status_code=404, detail="Template not found")
     session.delete(row)
     session.commit()

@@ -274,7 +274,7 @@ def rerun_extraction(
     # user's monthly quota too (re-extraction is a paid operation).
     enforce_limits(session, user, raw_text=source.raw_text, model=effective_model)
 
-    suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
+    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
     examples = resolve_enabled_examples(session, user.user_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source.filename,
@@ -338,7 +338,7 @@ def regen_extraction_section(
     # Same plan gates as /api/extract — regen is a paid Claude call.
     enforce_limits(session, user, raw_text=row.raw_text or "", model=effective_model)
 
-    suffix = resolve_prompt_suffix(session, user.user_id)  # M7.1
+    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
     new_items, model_used, usage = regen_section(
         section=payload.section,
         filename=row.filename,

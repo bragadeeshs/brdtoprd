@@ -89,6 +89,37 @@ class Extraction(SQLModel, table=True):
     gaps: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
 
 
+class PromptTemplate(SQLModel, table=True):
+    """Named prompt-suffix template (M7.1.b).
+
+    Replaces M7.1's single `user_settings.prompt_suffix` slot with
+    multiple-named-templates-per-user. The legacy column stays as a
+    fallback so existing users don't lose their saved suffix; once they
+    interact with Settings post-M7.1.b, the resolver migrates it to a
+    "Default" PromptTemplate row and clears the legacy field.
+
+    Active selection: at most one row per `(user_id, org_id)` has
+    `is_active=True`. Activating a template flips the previous active
+    one to false in the same transaction. Resolver picks the user-
+    scoped active row first; if none, falls back to the org-scoped
+    active row (M7.1.c); if none, falls back to legacy suffix.
+
+    Cap: no hard cap on stored count (cheap), but only one is active at
+    a time so token cost is the same as M7.1's single-suffix model.
+    """
+
+    __tablename__ = "prompt_template"
+
+    id: str = Field(primary_key=True)         # `tpl_<base36-ts>_<rand6>`
+    user_id: str = Field(index=True)
+    org_id: str | None = Field(default=None, index=True)
+    name: str
+    content: str
+    is_active: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 class FewShotExample(SQLModel, table=True):
     """User-curated input → expected-output pair for in-context learning (M7.2).
 
