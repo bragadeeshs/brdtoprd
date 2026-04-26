@@ -673,6 +673,7 @@ function AuthedApp() {
           onUpdate={(nextGaps) => updateExtraction({ gaps: nextGaps })}
           onRegen={() => handleRegenSection('gaps')}
           regenBusy={regenBusy === 'gaps'}
+          rawText={extraction.raw_text}
         />
       )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />

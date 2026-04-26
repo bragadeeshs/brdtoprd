@@ -412,7 +412,7 @@ Effort tags: `S` (≤2h), `M` (half-day), `L` (1–2 days), `XL` (3+ days)
 ## M7.5 Multi-doc extraction
 - [x] **M7.5.1** Upload N files → ingestor loops per file (parse + image-vision + OCR fallback) → concatenate with `===== DOC i: name =====` markers → one combined raw_text → normal extract pipeline. Source-file persistence (R2) skipped when N > 1. UI shows multi-file staging list — `backend/services/ingest.py`, `backend/main.py`, `frontend/src/components/EmptyState.jsx`, `frontend/src/api.js` — M
 - [ ] **M7.5.b** Per-doc source persistence on R2 (multi-source download from the studio) — — M
-- [ ] **M7.5.c** Per-doc source quotes in M5.1 source_quote — currently the doc-marker is in raw_text but artifacts don't carry "which doc" provenance — — S
+- [x] **M7.5.c** Per-doc provenance — `source_doc: int` field on UserStory / NonFunctional / Gap (1-indexed; 0 = single-doc / synthesized). Prompt updated to populate from `===== DOC i: name =====` markers. Frontend `<DocBadge>` (📄 filename) renders next to artifacts on multi-doc extractions; `lib/multi_doc.js` parses doc names from raw_text — `backend/models.py`, `backend/extract.py`, `frontend/src/lib/multi_doc.js`, `ArtifactsPane.jsx`, `GapsRail.jsx` — S
 
 ## M7.6 Version diff
 - [x] **M7.6.1** Compare two extractions — `/compare/:idA/:idB` route renders added/removed/changed per section (brief / actors / stories / NFRs / gaps); collapsible sections with auto-expand when emphasis (changes present); "Compare" link added to each non-current row in the version picker — `frontend/src/lib/diff.js`, `frontend/src/pages/CompareView.jsx`, `frontend/src/App.jsx`, `frontend/src/components/TopBar.jsx` — S

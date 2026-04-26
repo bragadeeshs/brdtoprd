@@ -14,6 +14,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { copyToClipboard } from '../lib/clipboard.js'
+import { docNameFor, parseDocNames } from '../lib/multi_doc.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
 import CommentThread from './Comments.jsx'
@@ -130,6 +131,27 @@ function SourceQuote({ text, compact = false, onPick }) {
   )
 }
 
+/* M7.5.c — small "from doc N: filename" pill, only renders when the
+ * artifact has a known source_doc and the extraction is multi-doc.
+ * Otherwise returns null so single-doc UIs stay clean. */
+function DocBadge({ name }) {
+  if (!name) return null
+  return (
+    <span
+      title={`From ${name}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '2px 6px', borderRadius: 'var(--radius-pill)',
+        background: 'var(--bg-subtle)', color: 'var(--text-soft)',
+        fontSize: 10, fontWeight: 500, fontFamily: 'var(--font-mono)',
+        maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}
+    >
+      📄 {name}
+    </span>
+  )
+}
+
 function StoryCard({
   story,
   idx,
@@ -142,6 +164,7 @@ function StoryCard({
   extractionId,
   comments = [],
   commentHandlers,
+  docName,
 }) {
   const editable = typeof onUpdate === 'function'
   const removable = typeof onRemove === 'function'
@@ -281,6 +304,7 @@ function StoryCard({
             )}
           </span>
         )}
+        <DocBadge name={docName} />
         {extractionId && (
           <CommentThread
             extractionId={extractionId}
@@ -436,7 +460,7 @@ function StoryCard({
  * DnD can reorder without React re-mounting the wrong element. We rely on
  * extracted/added stories carrying unique US-NN ids — collisions would
  * cause both visual flicker and a "duplicate id" warning. */
-function SortableStoryItem({ story, idx, onCopy, onPickQuote, updateStory, removeStory, extractionId, comments, commentHandlers }) {
+function SortableStoryItem({ story, idx, onCopy, onPickQuote, updateStory, removeStory, extractionId, comments, commentHandlers, docName }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: story.id,
   })
@@ -460,12 +484,13 @@ function SortableStoryItem({ story, idx, onCopy, onPickQuote, updateStory, remov
         extractionId={extractionId}
         comments={comments}
         commentHandlers={commentHandlers}
+        docName={docName}
       />
     </div>
   )
 }
 
-function SortableStoryList({ stories, onReorder, onCopy, onPickQuote, updateStory, removeStory, extractionId, commentsForStory, commentHandlers }) {
+function SortableStoryList({ stories, onReorder, onCopy, onPickQuote, updateStory, removeStory, extractionId, commentsForStory, commentHandlers, docNames }) {
   // PointerSensor with a small distance threshold so a click on the grip
   // doesn't immediately start a drag (would conflict with the click-to-edit
   // primitives nested inside the card).
@@ -499,6 +524,7 @@ function SortableStoryList({ stories, onReorder, onCopy, onPickQuote, updateStor
               extractionId={extractionId}
               comments={commentsForStory(s.id)}
               commentHandlers={commentHandlers}
+              docName={docNames && docNames.length > 1 ? docNameFor(docNames, s.source_doc) : ''}
             />
           ))}
         </div>
@@ -539,6 +565,14 @@ export default function ArtifactsPane({
   onCommentPatch,
   onCommentDelete,
 }) {
+  // M7.5.c — parse "===== DOC i: name =====" markers from raw_text once
+  // per render. Single-doc inputs produce [""] so docNameFor returns ""
+  // (no badge). Cheap regex; React.useMemo keys on raw_text.
+  const docNames = React.useMemo(
+    () => parseDocNames(extraction.raw_text || ''),
+    [extraction.raw_text],
+  )
+  const isMultiDoc = docNames.length > 1
   // Build a {target_kind:target_key → [comments]} index once per render so
   // each artifact's CommentThread gets a stable filtered slice.
   const commentsByTarget = React.useMemo(() => {
@@ -936,6 +970,7 @@ export default function ArtifactsPane({
               extractionId={extraction.id}
               commentsForStory={commentsForStory}
               commentHandlers={commentHandlers}
+              docNames={docNames}
             />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -949,6 +984,7 @@ export default function ArtifactsPane({
                   extractionId={extraction.id}
                   comments={commentsForStory(s.id)}
                   commentHandlers={commentHandlers}
+                  docName={isMultiDoc ? docNameFor(docNames, s.source_doc) : ''}
                 />
               ))}
             </div>
@@ -1023,6 +1059,11 @@ export default function ArtifactsPane({
                           />
                         ) : (
                           n.value
+                        )}
+                        {isMultiDoc && n.source_doc > 0 && (
+                          <span style={{ marginLeft: 6 }}>
+                            <DocBadge name={docNameFor(docNames, n.source_doc)} />
+                          </span>
                         )}
                         {n.source_quote &&
                           (typeof onPickQuote === 'function' ? (

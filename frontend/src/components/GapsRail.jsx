@@ -5,6 +5,7 @@ import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
 import { EditableSelect, EditableText, EditableTextarea } from './Editable.jsx'
 import { RegenButton } from './ArtifactsPane.jsx'
+import { docNameFor, parseDocNames } from '../lib/multi_doc.js'
 import {
   AlertCircle,
   AlertTriangle,
@@ -67,7 +68,7 @@ function ActionDot() {
   return <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
 }
 
-function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote, onUpdate, onRemove }) {
+function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote, onUpdate, onRemove, docName }) {
   const meta = SEVERITY_META[gap.severity] || SEVERITY_META.low
   const isResolved = !!state?.resolved
   const wasAsked = !!state?.askedAt
@@ -193,6 +194,19 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
             ) : (
               gap.section
             )}
+          </span>
+        )}
+        {docName && (
+          <span
+            title={`From ${docName}`}
+            style={{
+              padding: '2px 6px', borderRadius: 'var(--radius-pill)',
+              background: 'var(--bg-subtle)', color: 'var(--text-soft)',
+              fontSize: 10, fontWeight: 500, fontFamily: 'var(--font-mono)',
+              maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+          >
+            📄 {docName}
           </span>
         )}
       </div>
@@ -321,7 +335,10 @@ const SEVERITY_FILTERS = [
   { id: 'low', label: 'Low' },
 ]
 
-export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate, onRegen, regenBusy }) {
+export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate, onRegen, regenBusy, rawText }) {
+  // M7.5.c — pull doc-name list from raw_text (single-doc → [""], no badges).
+  const docNames = useMemo(() => parseDocNames(rawText || ''), [rawText])
+  const isMultiDoc = docNames.length > 1
   // M4.1 — gap-level edits. Each card edits its own slot; we hand back the
   // full new gaps array to the parent's onUpdate callback (App.jsx wraps it
   // into a {gaps: ...} PATCH).
@@ -618,6 +635,7 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
             onPickQuote={onPickQuote}
             onUpdate={editable ? (next) => updateGap(idx, next) : undefined}
             onRemove={editable ? () => removeGap(idx) : undefined}
+            docName={isMultiDoc ? docNameFor(docNames, gap.source_doc) : ''}
           />
         ))}
 

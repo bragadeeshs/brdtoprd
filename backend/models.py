@@ -29,6 +29,10 @@ class UserStory(BaseModel):
     # string when the model can't isolate one. The frontend uses it for
     # click-to-source scrolling (M5.2).
     source_quote: str = ""
+    # M7.5.c — per-doc provenance for multi-doc extractions. 1-indexed
+    # (matches the "===== DOC i: name =====" markers in raw_text). 0 = single
+    # doc / unknown / synthesized across docs.
+    source_doc: int = 0
 
 
 class NonFunctional(BaseModel):
@@ -37,6 +41,8 @@ class NonFunctional(BaseModel):
     value: str
     # M5.1 — same intent as UserStory.source_quote.
     source_quote: str = ""
+    # M7.5.c — same intent as UserStory.source_doc.
+    source_doc: int = 0
 
 
 class Gap(BaseModel):
@@ -49,6 +55,8 @@ class Gap(BaseModel):
     # absence-of-info gap), record the passage here. May be empty for
     # "missing info" gaps — `context` already paraphrases those.
     source_quote: str = ""
+    # M7.5.c — per-doc provenance.
+    source_doc: int = 0
 
 
 class ExtractionPayload(BaseModel):

@@ -40,7 +40,8 @@ Rules:
 - If a list would be empty, return [] rather than fabricating.
 - Prefer concise wording over paraphrase of the source.
 - Severity guide: high = blocks delivery / violates compliance, med = decision needed, low = nice to clarify.
-- source_quote MUST be exact text copied from the source — never reworded. Use empty string if you can't find a clean exact-match passage. The frontend uses it for click-to-source navigation, so reworded text breaks the search."""
+- source_quote MUST be exact text copied from the source — never reworded. Use empty string if you can't find a clean exact-match passage. The frontend uses it for click-to-source navigation, so reworded text breaks the search.
+- source_doc (M7.5.c, multi-doc only): if the source contains "===== DOC i: name =====" markers, set source_doc to the index of the doc the artifact came from (1, 2, ...). For artifacts synthesized across multiple docs (e.g. one story drawn from doc 1 + doc 3) use 0. For single-doc inputs (no markers), always 0."""
 
 
 def _mock(filename: str, raw_text: str) -> ExtractionResult:
