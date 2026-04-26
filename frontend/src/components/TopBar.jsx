@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { listVersionsApi } from '../api.js'
+import { track } from '../lib/analytics.js'
 import { Badge, Button, IconButton } from './primitives.jsx'
 import {
   AlertTriangle,
@@ -220,6 +221,7 @@ export default function TopBar({
     a.download = `${extraction.filename.replace(/\.[^/.]+$/, '')}.stories.md`
     a.click()
     URL.revokeObjectURL(url)
+    track('export_clicked', { format: 'md' })
   }
 
   const currentVersion = versions.find((v) => v.id === extractionId)?.version

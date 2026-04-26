@@ -87,3 +87,11 @@ services:
         sync: false
       - key: VITE_SENTRY_ENV
         value: production
+      # M0.3.5 — PostHog product analytics. Frontend-only (events fire from
+      # the browser); silent no-op when unset. PostHog project keys are
+      # public-by-design (the dashboard validates project membership
+      # server-side from the secret). Override host for self-hosted instances.
+      - key: VITE_POSTHOG_KEY
+        sync: false
+      - key: VITE_POSTHOG_HOST
+        value: https://app.posthog.com

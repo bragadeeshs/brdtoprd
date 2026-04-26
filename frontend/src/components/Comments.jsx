@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import { createCommentApi, deleteCommentApi, patchCommentApi } from '../api.js'
+import { track } from '../lib/analytics.js'
 import { useToast } from './Toast.jsx'
 import { Card } from './primitives.jsx'
 import { MessageSquare } from './icons.jsx'
@@ -226,6 +227,7 @@ export default function CommentThread({
       })
       onCreate?.(created)
       setDraft('')
+      track('comment_posted', { target_kind: targetKind })
     } catch (err) {
       toast.error(err.message || 'Could not post comment')
     } finally {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { copyToClipboard } from '../lib/clipboard.js'
 import { createShareApi, getShareApi, revokeShareApi } from '../api.js'
+import { track } from '../lib/analytics.js'
 import { useToast } from './Toast.jsx'
 import { Card } from './primitives.jsx'
 
@@ -46,6 +47,7 @@ export default function ShareModal({ extractionId, onClose }) {
     try {
       const s = await createShareApi(extractionId)
       setShare(s)
+      track('share_link_created', { rotated: !!share })
       toast.success(share ? 'Share link rotated' : 'Share link created')
     } catch (err) {
       toast.error(err.message || 'Could not create share')

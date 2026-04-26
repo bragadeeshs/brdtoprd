@@ -9,6 +9,7 @@ import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import ShareModal from './components/ShareModal.jsx'
 import { setSentryUser } from './lib/sentry.js'
+import { identifyUser, track } from './lib/analytics.js'
 import Account from './pages/Account.jsx'
 import Documents from './pages/Documents.jsx'
 import Project from './pages/Project.jsx'
@@ -223,10 +224,11 @@ function AuthedApp() {
 
   // M0.3.4 — tag Sentry events with the active user + org so issues are
   // attributable. No PII (just ids); the helper is a no-op if Sentry isn't
-  // configured.
+  // configured. Same call pattern wires PostHog (M0.3.5).
   const { user: clerkUser } = useUser()
   useEffect(() => {
     setSentryUser(clerkUser?.id || null, orgId)
+    identifyUser(clerkUser?.id || null, orgId)
   }, [clerkUser?.id, orgId])
 
   const [extraction, setExtraction] = useState(null)
@@ -344,6 +346,9 @@ function AuthedApp() {
     setLoading(true)
     setStreamUsage(null)
     setPendingName(file ? file.name : filename)
+    const inputChars = (text?.length) || (file?.size || 0)
+    const startedAt = Date.now()
+    track('extraction_started', { input_chars: inputChars })
     try {
       // M5.3 — streaming variant. Backend still persists + returns the
       // canonical full record on `complete`; we just get usage ticks along
@@ -356,11 +361,21 @@ function AuthedApp() {
       setExtractionId(record?.id || null)
       refreshPlan()  // M3.5 — usage count just bumped; refresh sidebar bar
       if (location.pathname !== '/') navigate('/')
+      track('extraction_finished', {
+        model: record?.model_used,
+        input_chars: inputChars,
+        live: !!record?.live,
+        duration_ms: Date.now() - startedAt,
+      })
     } catch (e) {
       // Paywall trips through here as a 403/413/429 with structured payload —
       // show the upgrade modal instead of a toast.
       if (e.paywall) setPaywall(e.paywall)
       else toast.error(e.message || 'Extraction failed')
+      track('extraction_failed', {
+        reason: e.paywall?.reason || 'error',
+        status: e.status || 0,
+      })
     } finally {
       setLoading(false)
       setStreamUsage(null)
@@ -426,6 +441,7 @@ function AuthedApp() {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
     setRegenBusy(section)
+    track('regen_clicked', { section })
     try {
       const updated = await regenSectionApi(extractionId, section)
       setExtraction(updated)
