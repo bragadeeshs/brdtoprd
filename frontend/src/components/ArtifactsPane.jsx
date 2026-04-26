@@ -59,7 +59,34 @@ function formatStoryMarkdown(s) {
     lines.push('**Acceptance criteria:**')
     s.criteria.forEach((c) => lines.push(`- ${c}`))
   }
+  if (s.source_quote) {
+    lines.push('')
+    lines.push(`> ${s.source_quote}`)
+  }
   return lines.join('\n')
+}
+
+/* M5.1 — verbatim source snippet rendered as a left-bordered italic quote.
+ * Used by stories, NFRs, and gaps. M5.2 will turn this into a click target
+ * that scrolls SourcePane to the matching passage. */
+function SourceQuote({ text, compact = false }) {
+  if (!text) return null
+  return (
+    <div
+      style={{
+        marginTop: compact ? 6 : 12,
+        paddingLeft: 10,
+        borderLeft: '2px solid var(--border)',
+        fontSize: compact ? 11.5 : 12.5,
+        lineHeight: 1.5,
+        color: 'var(--text-soft)',
+        fontStyle: 'italic',
+      }}
+      title="Source quote"
+    >
+      “{text}”
+    </div>
+  )
 }
 
 function StoryCard({ story, idx, onCopy }) {
@@ -127,6 +154,9 @@ function StoryCard({ story, idx, onCopy }) {
         <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>I want</span> {story.want}{' '}
         <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>so that</span> {story.so_that}
       </div>
+
+      {/* Source quote — verbatim snippet that grounds this story (M5.1) */}
+      <SourceQuote text={story.source_quote} />
 
       {/* Acceptance criteria */}
       {story.criteria?.length > 0 && (
@@ -473,6 +503,21 @@ export default function ArtifactsPane({ extraction }) {
                         }}
                       >
                         {n.value}
+                        {n.source_quote && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontFamily: 'inherit',
+                              fontSize: 11.5,
+                              fontStyle: 'italic',
+                              color: 'var(--text-soft)',
+                              lineHeight: 1.4,
+                            }}
+                            title="Source quote"
+                          >
+                            “{n.source_quote}”
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )

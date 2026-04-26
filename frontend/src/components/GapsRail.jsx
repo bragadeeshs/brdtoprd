@@ -33,6 +33,10 @@ function formatGapMarkdown(g) {
     lines.push('')
     lines.push(`**Context**: ${g.context}`)
   }
+  if (g.source_quote) {
+    lines.push('')
+    lines.push(`> ${g.source_quote}`)
+  }
   return lines.join('\n')
 }
 
@@ -159,6 +163,25 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
           }}
         >
           {gap.context}
+        </div>
+      )}
+
+      {/* Source quote — verbatim passage that makes the gap evident (M5.1).
+       * Empty for "absence-of-info" gaps, where context already paraphrases. */}
+      {gap.source_quote && (
+        <div
+          style={{
+            paddingLeft: 10,
+            borderLeft: '2px solid var(--border)',
+            fontSize: 11.5,
+            lineHeight: 1.5,
+            color: 'var(--text-soft)',
+            fontStyle: 'italic',
+            marginBottom: 10,
+          }}
+          title="Source quote"
+        >
+          “{gap.source_quote}”
         </div>
       )}
 

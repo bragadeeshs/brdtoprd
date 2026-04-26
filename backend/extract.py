@@ -31,14 +31,16 @@ Produce, strictly grounded in the source:
   - actor, want, so_that: the three parts above
   - section: best-guess source location as "section N.M" or "§N.M" if inferable, else ""
   - criteria: 2-5 short declarative acceptance criteria
-- nfrs: non-functional requirements as {category, value} pairs. Examples: Performance/"p95 < 2s", Accessibility/"WCAG 2.1 AA", PCI-DSS/"SAQ-A".
-- gaps: ambiguities, missing information, or contradictions. severity is one of high|med|low. Include a short context quoting or paraphrasing the relevant source passage.
+  - source_quote: the verbatim snippet from the source that most directly supports this story (1-2 sentences max, exact text — do not paraphrase). Empty string when no single passage supports it (synthesized from multiple places, or implied).
+- nfrs: non-functional requirements as {category, value, source_quote} triples. Examples: Performance/"p95 < 2s", Accessibility/"WCAG 2.1 AA", PCI-DSS/"SAQ-A". source_quote follows the same verbatim rule as stories.
+- gaps: ambiguities, missing information, or contradictions. severity is one of high|med|low. Include a short context quoting or paraphrasing the relevant source passage. source_quote: the verbatim passage that makes the gap evident (e.g. the vague phrase, the contradiction). Empty string for "absence of info" gaps where there is no specific passage to point at.
 
 Rules:
 - Be faithful to the source. Do not invent requirements not supported by the text.
 - If a list would be empty, return [] rather than fabricating.
 - Prefer concise wording over paraphrase of the source.
-- Severity guide: high = blocks delivery / violates compliance, med = decision needed, low = nice to clarify."""
+- Severity guide: high = blocks delivery / violates compliance, med = decision needed, low = nice to clarify.
+- source_quote MUST be exact text copied from the source — never reworded. Use empty string if you can't find a clean exact-match passage. The frontend uses it for click-to-source navigation, so reworded text breaks the search."""
 
 
 def _mock(filename: str, raw_text: str) -> ExtractionResult:
@@ -65,6 +67,7 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
                     "Masked last 4 digits visible",
                     "Default card pre-selected",
                 ],
+                source_quote="Returning customers should see their saved payment methods at checkout.",
             ),
             UserStory(
                 id="US-02",
@@ -73,6 +76,7 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
                 so_that="I'm not blocked on first purchase",
                 section="§ 2.4",
                 criteria=["Email captured for receipt", "No password prompt"],
+                source_quote="Guest checkout must be supported.",
             ),
             UserStory(
                 id="US-03",
@@ -84,13 +88,14 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
                     "Refund form accessible from order detail",
                     "Date check enforced server-side",
                 ],
+                source_quote="Refunds are allowed within 30 days.",
             ),
         ],
         nfrs=[
-            NonFunctional(category="Performance", value="p95 < 2s"),
-            NonFunctional(category="Availability", value="99.9%"),
-            NonFunctional(category="Accessibility", value="WCAG 2.1 AA"),
-            NonFunctional(category="PCI-DSS", value="SAQ-A"),
+            NonFunctional(category="Performance", value="p95 < 2s", source_quote="Pages should load fast."),
+            NonFunctional(category="Availability", value="99.9%", source_quote="Service uptime: 99.9%."),
+            NonFunctional(category="Accessibility", value="WCAG 2.1 AA", source_quote="Must meet WCAG 2.1 AA."),
+            NonFunctional(category="PCI-DSS", value="SAQ-A", source_quote="PCI-DSS compliant."),
         ],
         gaps=[
             Gap(
@@ -98,24 +103,28 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
                 question="What is the target p95 latency?",
                 section="§ 4.1",
                 context="Document says 'fast' but never specifies a number.",
+                source_quote="Pages should load fast.",
             ),
             Gap(
                 severity="med",
                 question="Is there an admin actor?",
                 section="§ 3.2",
                 context="Refunds mentioned but no role defined.",
+                source_quote="Refunds are allowed within 30 days.",
             ),
             Gap(
                 severity="med",
                 question="Error-state copy owner?",
                 section="§ 5",
                 context="Failure modes listed without messaging.",
+                source_quote="",
             ),
             Gap(
                 severity="low",
                 question="Supported currencies?",
                 section="§ 2.4",
                 context="USD is implied; no list provided.",
+                source_quote="",
             ),
         ],
     )
