@@ -660,10 +660,32 @@ class NotionDatabase(BaseModel):
     url: str = ""
 
 
+class NotionPropertyMapping(BaseModel):
+    """One entry in PushToNotionRequest.property_map (M6.5.b).
+
+    `name` is the Notion column name; `type` is the Notion property type
+    so the backend builds the right per-type payload without a per-push
+    schema fetch."""
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    type: str   # 'rich_text' | 'select' | 'multi_select' | 'url' (extensible)
+
+
+class NotionPropertySchema(BaseModel):
+    """One row from GET /api/integrations/notion/databases/{id}/schema (M6.5.b)."""
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    type: str
+
+
 class PushToNotionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     database_id: str
     title_prop: str       # echoed back from the picker so backend doesn't re-fetch
+    # M6.5.b — story_field -> {name, type}. Recognised story_fields:
+    # 'actor', 'want', 'so_that', 'section', 'source_quote', 'criteria'.
+    # Empty/None means everything goes to body blocks (legacy behaviour).
+    property_map: dict[str, NotionPropertyMapping] = Field(default_factory=dict)
 
 
 class PushToNotionResult(BaseModel):

@@ -572,14 +572,31 @@ export async function listNotionDatabasesApi() {
   return jsonOrThrow(res)
 }
 
+/** M6.5.b — full property list for one Notion database. Used by the
+ *  push modal's mapping picker. Returns [{name, type}]. */
+export async function getNotionDatabaseSchemaApi(databaseId) {
+  const res = await apiFetch(
+    `/api/integrations/notion/databases/${encodeURIComponent(databaseId)}/schema`,
+  )
+  return jsonOrThrow(res)
+}
+
 /** Push every story as a Notion page in `database_id`. `title_prop` comes
  *  back from listNotionDatabasesApi — we forward it unchanged so the
- *  backend doesn't have to re-fetch the database schema. */
-export async function pushToNotionApi(extractionId, { database_id, title_prop }) {
+ *  backend doesn't have to re-fetch the database schema.
+ *
+ *  M6.5.b: `property_map` routes story fields into Notion columns:
+ *    {actor: {name: "Actor", type: "select"}, criteria: {name: "AC", type: "multi_select"}}
+ *  Empty/omitted = legacy behaviour (everything in body blocks).
+ */
+export async function pushToNotionApi(
+  extractionId,
+  { database_id, title_prop, property_map = {} },
+) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/notion`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ database_id, title_prop }),
+    body: JSON.stringify({ database_id, title_prop, property_map }),
   })
   return jsonOrThrow(res)
 }

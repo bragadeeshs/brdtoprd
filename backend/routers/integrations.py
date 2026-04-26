@@ -42,6 +42,7 @@ from models import (
     NotionConnectionRead,
     NotionConnectionWrite,
     NotionDatabase,
+    NotionPropertySchema,
     PushToGitHubRequest,
     PushToGitHubResult,
     PushToJiraRequest,
@@ -832,6 +833,22 @@ def delete_notion_connection(
     session.commit()
 
 
+@router.get(
+    "/api/integrations/notion/databases/{database_id}/schema",
+    response_model=list[NotionPropertySchema],
+)
+def get_notion_database_schema(database_id: str, session: SessionDep, user: UserDep):
+    """M6.5.b — full property list for one Notion database. Used by the
+    push modal's mapping picker so users can route story fields into
+    structured columns instead of stuffing everything in body blocks."""
+    row = _get_connection(session, user, "notion")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No Notion connection saved. Connect in Settings.")
+    cfg = _decrypt_notion_config(row)
+    client = NotionClient(token=cfg["token"])
+    return client.get_database_schema(database_id)
+
+
 @router.get("/api/integrations/notion/databases", response_model=list[NotionDatabase])
 def list_notion_databases(session: SessionDep, user: UserDep):
     """Live fetch — also test-connection probe. Notion-specific gotcha:
@@ -866,9 +883,12 @@ def push_to_notion(
     if not (extraction.stories or []):
         raise HTTPException(status_code=400, detail="No stories to push.")
 
+    # M6.5.b — Pydantic NotionPropertyMapping → plain dict for the service
+    pmap = {k: {"name": v.name, "type": v.type} for k, v in (payload.property_map or {}).items()}
     return push_extraction_notion(
         client,
         extraction,
         database_id=payload.database_id,
         title_prop=payload.title_prop,
+        property_map=pmap,
     )

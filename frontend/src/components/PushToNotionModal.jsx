@@ -1,8 +1,26 @@
-import React, { useEffect, useState } from 'react'
-import { listNotionDatabasesApi, pushToNotionApi } from '../api.js'
+import React, { useEffect, useRef, useState } from 'react'
+import {
+  getNotionDatabaseSchemaApi,
+  listNotionDatabasesApi,
+  pushToNotionApi,
+} from '../api.js'
 import { useToast } from './Toast.jsx'
 import { Card } from './primitives.jsx'
 import { track } from '../lib/analytics.js'
+
+/* M6.5.b — story field metadata for the property mapping picker.
+ * `compatible_types` lists the Notion property types this field can be
+ * routed into. Anything not in the list (formula, relation, files, etc.)
+ * is filtered out of the per-field dropdown so users can't pick a target
+ * the backend won't write to. */
+const STORY_FIELDS = [
+  { key: 'actor',        label: 'Actor',         compatible: ['rich_text', 'select'] },
+  { key: 'want',         label: 'I want',        compatible: ['rich_text'] },
+  { key: 'so_that',      label: 'So that',       compatible: ['rich_text'] },
+  { key: 'section',      label: 'Section',       compatible: ['rich_text', 'select'] },
+  { key: 'source_quote', label: 'Source quote',  compatible: ['rich_text'] },
+  { key: 'criteria',     label: 'Criteria',      compatible: ['multi_select'] },
+]
 
 /* M6.5 — Push extraction stories to a Notion database.
  *
@@ -25,6 +43,12 @@ export default function PushToNotionModal({ extraction, onClose }) {
   const [selectedId, setSelectedId] = useState('')
   const [pushing, setPushing] = useState(false)
   const [result, setResult] = useState(null)
+  // M6.5.b — schema for the picked database (loaded on demand) + the
+  // user's per-field mapping choices.
+  const [schema, setSchema] = useState(null)        // null=loading, []=empty, [...]=loaded
+  const [schemaErr, setSchemaErr] = useState(null)
+  const [propMap, setPropMap] = useState({})        // story_field -> {name, type} | undefined
+  const schemaCache = useRef(new Map())
 
   useEffect(() => {
     let alive = true
@@ -47,21 +71,68 @@ export default function PushToNotionModal({ extraction, onClose }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, pushing])
 
+  // M6.5.b — fetch the picked database's full property list (cached).
+  useEffect(() => {
+    if (!selectedId) return
+    setPropMap({})   // reset mappings when switching databases
+    if (schemaCache.current.has(selectedId)) {
+      setSchema(schemaCache.current.get(selectedId))
+      setSchemaErr(null)
+      return
+    }
+    setSchema(null); setSchemaErr(null)
+    let alive = true
+    getNotionDatabaseSchemaApi(selectedId)
+      .then((rows) => {
+        if (!alive) return
+        schemaCache.current.set(selectedId, rows)
+        setSchema(rows)
+      })
+      .catch((err) => {
+        if (!alive) return
+        setSchemaErr(err.message || 'Could not load database schema')
+        setSchema([])
+      })
+    return () => { alive = false }
+  }, [selectedId])
+
   const selected = databases?.find((d) => d.id === selectedId)
+
+  const onMapChange = (storyField, raw) => {
+    setPropMap((prev) => {
+      const next = { ...prev }
+      if (!raw) {
+        delete next[storyField]
+        return next
+      }
+      // raw is "name|type" — encoding the type with the name lets the
+      // backend skip a schema fetch on push (we already have it).
+      const sep = raw.lastIndexOf('|')
+      const name = raw.slice(0, sep)
+      const type = raw.slice(sep + 1)
+      next[storyField] = { name, type }
+      return next
+    })
+  }
 
   const doPush = async () => {
     if (!selected || pushing) return
     setPushing(true)
-    track('push_to_notion_started', { database_id: selected.id })
+    track('push_to_notion_started', {
+      database_id: selected.id,
+      mapped_count: Object.keys(propMap).length,
+    })
     try {
       const r = await pushToNotionApi(extraction.id, {
         database_id: selected.id,
         title_prop: selected.title_prop,
+        property_map: propMap,
       })
       setResult(r)
       track('push_to_notion_finished', {
         pushed: r.pushed.length,
         failed: r.failed.length,
+        mapped_count: Object.keys(propMap).length,
       })
     } catch (err) {
       toast.error(err.message || 'Push failed')
@@ -192,7 +263,7 @@ export default function PushToNotionModal({ extraction, onClose }) {
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
               disabled={pushing}
-              style={{ ...inputStyle, marginBottom: 14 }}
+              style={{ ...inputStyle, marginBottom: 12 }}
             >
               {databases.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -200,6 +271,66 @@ export default function PushToNotionModal({ extraction, onClose }) {
                 </option>
               ))}
             </select>
+
+            {/* M6.5.b — property mapping. Per-field dropdown, options
+                filtered by the field's compatible Notion types. "Body
+                only" is always available — that's the legacy behaviour. */}
+            <SectionLabel>
+              Property mapping {Object.keys(propMap).length > 0 && `(${Object.keys(propMap).length} mapped)`}
+            </SectionLabel>
+            {schema === null ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+                Loading database columns…
+              </div>
+            ) : schemaErr ? (
+              <div style={{ fontSize: 12, color: 'var(--danger-ink)', marginBottom: 14 }}>
+                {schemaErr}
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                  marginBottom: 14, padding: 8,
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-subtle)',
+                }}
+              >
+                <div style={{ fontSize: 11, color: 'var(--text-soft)', marginBottom: 4, lineHeight: 1.4 }}>
+                  Optional. Route a story field into a Notion column. Anything you
+                  don't map keeps rendering inside the page body.
+                </div>
+                {STORY_FIELDS.map((f) => {
+                  // Only offer columns whose type matches the field's compatible list.
+                  const options = (schema || []).filter(
+                    (s) => f.compatible.includes(s.type) && s.type !== 'title',
+                  )
+                  const current = propMap[f.key]
+                  const value = current ? `${current.name}|${current.type}` : ''
+                  return (
+                    <div
+                      key={f.key}
+                      style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 8, alignItems: 'center' }}
+                    >
+                      <div style={{ fontSize: 12, color: 'var(--text-strong)' }}>{f.label}</div>
+                      <select
+                        value={value}
+                        onChange={(e) => onMapChange(f.key, e.target.value)}
+                        disabled={pushing}
+                        style={{ ...inputStyle, fontSize: 12, padding: '5px 8px' }}
+                      >
+                        <option value="">— body only —</option>
+                        {options.map((o) => (
+                          <option key={o.name} value={`${o.name}|${o.type}`}>
+                            {o.name} · {o.type}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" onClick={onClose} disabled={pushing} style={ghostBtn}>Cancel</button>
               <button type="button" onClick={doPush} disabled={pushing || !selected} style={primaryBtn}>
