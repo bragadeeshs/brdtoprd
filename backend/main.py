@@ -40,7 +40,9 @@ from services.extractions import (
     record_usage,
     save_upload,
 )
+from extract import resolve_model
 from services.limits import enforce_limits
+from services.ocr import looks_like_empty, ocr_pdf_via_claude
 from services.prompts import resolve_prompt_suffix
 from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
@@ -190,6 +192,7 @@ async def extract(
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
 
     upload_bytes: bytes | None = None
+    file_ext = ""
     if file is not None:
         data = await file.read()
         if len(data) > MAX_BYTES:
@@ -197,11 +200,11 @@ async def extract(
                 status_code=413,
                 detail=f"File over {MAX_BYTES // (1024 * 1024)} MB limit.",
             )
-        ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-        if ext and ext not in SUPPORTED_EXT:
+        file_ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+        if file_ext and file_ext not in SUPPORTED_EXT:
             raise HTTPException(
                 status_code=415,
-                detail=f"Unsupported file type {ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
+                detail=f"Unsupported file type {file_ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
             )
         try:
             raw_text = _parse_file(file.filename or "uploaded", data)
@@ -213,9 +216,6 @@ async def extract(
     else:
         raw_text = text or ""
         source_name = filename or "pasted_text.txt"
-
-    if not raw_text.strip():
-        raise HTTPException(status_code=422, detail="No readable text in the input.")
 
     # Validate project ownership BEFORE the LLM call — no point burning tokens
     # if the request is going to fail validation anyway.
@@ -230,6 +230,39 @@ async def extract(
     # supply them via header. Header still wins (lets users test a new key).
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
+
+    # M7.3: OCR fallback for scanned PDFs. pypdf returns near-empty text on
+    # image-only PDFs; if we have a Claude key, hand the raw bytes to vision
+    # to transcribe. Records a separate UsageLog row (action="ocr") so the
+    # cost shows up alongside extract calls in /api/me/usage breakdowns.
+    ocr_usage = None
+    if (
+        upload_bytes is not None
+        and file_ext == ".pdf"
+        and looks_like_empty(raw_text)
+        and effective_key
+    ):
+        log.info("triggering OCR fallback for scanned PDF: %s", source_name)
+        raw_text, ocr_usage = ocr_pdf_via_claude(
+            upload_bytes,
+            api_key=effective_key,
+            model=resolve_model(effective_model),
+        )
+        # Bill the OCR call up front so the user's monthly count reflects it
+        # even if the subsequent extract fails (avoids "free OCR" exploit).
+        record_usage(
+            session,
+            user_id=user.user_id,
+            org_id=user.org_id,
+            extraction_id=None,
+            action="ocr",
+            model=resolve_model(effective_model),
+            live=True,
+            usage=ocr_usage,
+        )
+
+    if not raw_text.strip():
+        raise HTTPException(status_code=422, detail="No readable text in the input.")
 
     # M3.5.4: gate BEFORE the Claude call — never burn tokens on a doomed
     # request. Raises HTTPException with paywall payload on any tier breach.
@@ -329,6 +362,7 @@ async def extract_stream(
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
 
     upload_bytes: bytes | None = None
+    file_ext = ""
     if file is not None:
         data = await file.read()
         if len(data) > MAX_BYTES:
@@ -336,11 +370,11 @@ async def extract_stream(
                 status_code=413,
                 detail=f"File over {MAX_BYTES // (1024 * 1024)} MB limit.",
             )
-        ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-        if ext and ext not in SUPPORTED_EXT:
+        file_ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+        if file_ext and file_ext not in SUPPORTED_EXT:
             raise HTTPException(
                 status_code=415,
-                detail=f"Unsupported file type {ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
+                detail=f"Unsupported file type {file_ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
             )
         try:
             raw_text = _parse_file(file.filename or "uploaded", data)
@@ -353,9 +387,6 @@ async def extract_stream(
         raw_text = text or ""
         source_name = filename or "pasted_text.txt"
 
-    if not raw_text.strip():
-        raise HTTPException(status_code=422, detail="No readable text in the input.")
-
     if project_id:
         from db.models import Project as ProjectModel
         from services.scope import in_scope
@@ -365,6 +396,33 @@ async def extract_stream(
 
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
+
+    # M7.3: OCR fallback (mirrors /api/extract — see comment there).
+    if (
+        upload_bytes is not None
+        and file_ext == ".pdf"
+        and looks_like_empty(raw_text)
+        and effective_key
+    ):
+        log.info("triggering OCR fallback (stream) for scanned PDF: %s", source_name)
+        raw_text, ocr_usage = ocr_pdf_via_claude(
+            upload_bytes,
+            api_key=effective_key,
+            model=resolve_model(effective_model),
+        )
+        record_usage(
+            session,
+            user_id=user.user_id,
+            org_id=user.org_id,
+            extraction_id=None,
+            action="ocr",
+            model=resolve_model(effective_model),
+            live=True,
+            usage=ocr_usage,
+        )
+
+    if not raw_text.strip():
+        raise HTTPException(status_code=422, detail="No readable text in the input.")
 
     # Plan limits — still raise as HTTP errors so the existing paywall modal
     # path catches them. These fire before the SSE stream opens.
