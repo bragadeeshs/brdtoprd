@@ -538,12 +538,14 @@ export async function createFewShotExampleApi(body) {
   return jsonOrThrow(res)
 }
 
-/** Capture from an existing extraction. Primary UX path. */
-export async function captureFewShotFromExtractionApi(extractionId, name, enabled = true) {
+/** Capture from an existing extraction. Primary UX path.
+ *  Pass `org_id` to share with the active org (must match Clerk's
+ *  active org context; backend rejects mismatches). */
+export async function captureFewShotFromExtractionApi(extractionId, name, enabled = true, orgId = null) {
   const res = await apiFetch('/api/me/few-shot-examples/from-extraction', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ extraction_id: extractionId, name, enabled }),
+    body: JSON.stringify({ extraction_id: extractionId, name, enabled, org_id: orgId }),
   })
   return jsonOrThrow(res)
 }

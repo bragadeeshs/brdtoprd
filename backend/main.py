@@ -252,7 +252,7 @@ async def extract(
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
     suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
-    examples = resolve_enabled_examples(session, user.user_id)  # M7.2
+    examples = resolve_enabled_examples(session, user.user_id, user.org_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source_name,
         raw_text=raw_text,
@@ -389,7 +389,7 @@ async def extract_stream(
     # M7.2 — same lifecycle reasoning for few-shot examples. Snapshot a
     # plain list of (id, name, input_text, expected_payload) so the
     # generator doesn't reach into the closing session.
-    effective_examples = resolve_enabled_examples(session, user.user_id)
+    effective_examples = resolve_enabled_examples(session, user.user_id, user.org_id)
 
     # Mint id up front so the start event can carry it (the frontend uses it
     # to wire the in-flight extraction to the persisted row on `complete`).

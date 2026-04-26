@@ -433,31 +433,75 @@ def _to_few_shot_read(row: FewShotExample) -> FewShotExampleRead:
         input_text=row.input_text,
         expected_payload=ExtractionPayload(**row.expected_payload),
         enabled=row.enabled,
+        org_id=row.org_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
 
 
-def _enabled_count(session: Session, user_id: str) -> int:
-    return session.exec(
+def _enabled_count_for_scope(session: Session, user_id: str, org_id: str | None) -> int:
+    """Count enabled examples in a single scope (personal OR org).
+    M7.2.b — the cap applies per-scope, not per-user — so a user can have
+    3 personal + 3 org-shared active without conflict; the resolver still
+    only ships MAX_FEW_SHOT_ENABLED total."""
+    stmt = (
         select(func.count())
         .select_from(FewShotExample)
-        .where(FewShotExample.user_id == user_id)
         .where(FewShotExample.enabled == True)  # noqa: E712
-    ).one()
+    )
+    if org_id is None:
+        stmt = (
+            stmt.where(FewShotExample.user_id == user_id)
+            .where(FewShotExample.org_id.is_(None))  # type: ignore[union-attr]
+        )
+    else:
+        stmt = stmt.where(FewShotExample.org_id == org_id)
+    return session.exec(stmt).one()
 
 
 @router.get("/few-shot-examples", response_model=list[FewShotExampleRead])
 def list_few_shot_examples(session: SessionDep, user: UserDep) -> list[FewShotExampleRead]:
-    """List all of the user's examples (enabled + disabled), oldest first.
-    The order matches what the extractor sees so the user can predict
-    which examples ship with their next extraction."""
-    rows = session.exec(
+    """List visible examples — user-scoped + org-scoped (if user is in an
+    active org). Personal first, then org. Order within each group: oldest
+    first, matching what the extractor sees."""
+    user_rows = session.exec(
         select(FewShotExample)
         .where(FewShotExample.user_id == user.user_id)
+        .where(FewShotExample.org_id.is_(None))  # type: ignore[union-attr]
         .order_by(FewShotExample.created_at.asc())
     ).all()
-    return [_to_few_shot_read(r) for r in rows]
+    org_rows: list[FewShotExample] = []
+    if user.org_id:
+        org_rows = session.exec(
+            select(FewShotExample)
+            .where(FewShotExample.org_id == user.org_id)
+            .order_by(FewShotExample.created_at.asc())
+        ).all()
+    return [_to_few_shot_read(r) for r in list(user_rows) + list(org_rows)]
+
+
+def _validate_org_scope(payload_org_id: str | None, user: CurrentUser) -> str | None:
+    """M7.2.b — when the caller wants to create an org-scoped example,
+    the org_id must match their active Clerk org context. Returns the
+    canonical org_id to persist (None for personal scope)."""
+    if payload_org_id is None:
+        return None
+    if payload_org_id != user.org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="org_id must match your active org context.",
+        )
+    return payload_org_id
+
+
+def _can_edit_few_shot(row: FewShotExample, user: CurrentUser) -> bool:
+    """Permission: own personal row, OR org-shared row in your active org.
+    Same shape as the prompt-template permission rule (every org member
+    can edit org-shared rows in v1; tighten to org_role=admin when we
+    expose roles)."""
+    is_own = row.user_id == user.user_id and row.org_id is None
+    is_org_visible = row.org_id is not None and row.org_id == user.org_id
+    return is_own or is_org_visible
 
 
 @router.post("/few-shot-examples", response_model=FewShotExampleRead, status_code=201)
@@ -465,12 +509,13 @@ def create_few_shot_example(
     payload: FewShotExampleCreate, session: SessionDep, user: UserDep
 ) -> FewShotExampleRead:
     """Create a new example. If `enabled=True` would push the active count
-    over MAX_FEW_SHOT_ENABLED, save it disabled instead — caller gets a 400
-    with a hint. Friendlier than rejecting the whole write outright."""
-    if payload.enabled and _enabled_count(session, user.user_id) >= MAX_FEW_SHOT_ENABLED:
+    over MAX_FEW_SHOT_ENABLED in this scope, return 400 — friendlier than
+    silently saving disabled."""
+    org_id = _validate_org_scope(payload.org_id, user)
+    if payload.enabled and _enabled_count_for_scope(session, user.user_id, org_id) >= MAX_FEW_SHOT_ENABLED:
         raise HTTPException(
             status_code=400,
-            detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples — disable one first.",
+            detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples in this scope — disable one first.",
         )
     name = (payload.name or "").strip()
     if not name:
@@ -481,7 +526,7 @@ def create_few_shot_example(
     row = FewShotExample(
         id=_mint_id("fse"),
         user_id=user.user_id,
-        org_id=None,           # v1: user-scope only (M7.2.b)
+        org_id=org_id,
         name=name,
         input_text=payload.input_text,
         expected_payload=payload.expected_payload.model_dump(),
@@ -507,10 +552,11 @@ def capture_few_shot_from_extraction(
     if not in_scope(extraction, user):
         raise HTTPException(status_code=404, detail="Extraction not found")
 
-    if payload.enabled and _enabled_count(session, user.user_id) >= MAX_FEW_SHOT_ENABLED:
+    org_id = _validate_org_scope(payload.org_id, user)
+    if payload.enabled and _enabled_count_for_scope(session, user.user_id, org_id) >= MAX_FEW_SHOT_ENABLED:
         raise HTTPException(
             status_code=400,
-            detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples — disable one first.",
+            detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples in this scope — disable one first.",
         )
     name = (payload.name or "").strip()
     if not name:
@@ -519,7 +565,7 @@ def capture_few_shot_from_extraction(
     row = FewShotExample(
         id=_mint_id("fse"),
         user_id=user.user_id,
-        org_id=None,
+        org_id=org_id,
         name=name,
         input_text=extraction.raw_text or "",
         expected_payload={
@@ -542,16 +588,16 @@ def patch_few_shot_example(
     example_id: str, patch: FewShotExamplePatch, session: SessionDep, user: UserDep
 ) -> FewShotExampleRead:
     row = session.get(FewShotExample, example_id)
-    if row is None or row.user_id != user.user_id:
+    if row is None or not _can_edit_few_shot(row, user):
         raise HTTPException(status_code=404, detail="Example not found")
 
     # Cap check only fires when transitioning False → True. Every other
-    # patch (rename, edit body) skips it.
+    # patch (rename, edit body) skips it. Counted per-scope (M7.2.b).
     if patch.enabled is True and not row.enabled:
-        if _enabled_count(session, user.user_id) >= MAX_FEW_SHOT_ENABLED:
+        if _enabled_count_for_scope(session, user.user_id, row.org_id) >= MAX_FEW_SHOT_ENABLED:
             raise HTTPException(
                 status_code=400,
-                detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples — disable one first.",
+                detail=f"Maximum {MAX_FEW_SHOT_ENABLED} enabled examples in this scope — disable one first.",
             )
 
     if patch.name is not None:
@@ -577,7 +623,7 @@ def patch_few_shot_example(
 @router.delete("/few-shot-examples/{example_id}", status_code=204)
 def delete_few_shot_example(example_id: str, session: SessionDep, user: UserDep) -> None:
     row = session.get(FewShotExample, example_id)
-    if row is None or row.user_id != user.user_id:
+    if row is None or not _can_edit_few_shot(row, user):
         raise HTTPException(status_code=404, detail="Example not found")
     session.delete(row)
     session.commit()

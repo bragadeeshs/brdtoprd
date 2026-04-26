@@ -1794,8 +1794,9 @@ function FewShotExamplesSection() {
                   }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
                       {r.name}
+                      {r.org_id && <Badge tone="info" size="sm">org</Badge>}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2 }}>
                       {r.input_text.length.toLocaleString()} chars input · {sCount}st / {nCount}nfr / {gCount}gap output

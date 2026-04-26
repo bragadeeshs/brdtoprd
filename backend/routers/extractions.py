@@ -275,7 +275,7 @@ def rerun_extraction(
     enforce_limits(session, user, raw_text=source.raw_text, model=effective_model)
 
     suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
-    examples = resolve_enabled_examples(session, user.user_id)  # M7.2
+    examples = resolve_enabled_examples(session, user.user_id, user.org_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source.filename,
         raw_text=source.raw_text,

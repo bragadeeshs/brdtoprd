@@ -650,6 +650,7 @@ class FewShotExampleRead(BaseModel):
     input_text: str
     expected_payload: ExtractionPayload   # validated; same shape extractor produces
     enabled: bool
+    org_id: str | None = None    # M7.2.b — null = personal; else = org-shared
     created_at: datetime
     updated_at: datetime
 
@@ -663,6 +664,7 @@ class FewShotExampleCreate(BaseModel):
     input_text: str
     expected_payload: ExtractionPayload   # validates the JSON shape on write
     enabled: bool = True
+    org_id: str | None = None    # M7.2.b — must match caller's active org if set
 
 
 class FewShotExamplePatch(BaseModel):
@@ -681,6 +683,7 @@ class FewShotCaptureRequest(BaseModel):
     extraction_id: str
     name: str
     enabled: bool = True
+    org_id: str | None = None    # M7.2.b
 
 
 class ApiTokenRead(BaseModel):

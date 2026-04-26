@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useOrganization } from '@clerk/clerk-react'
 import { captureFewShotFromExtractionApi } from '../api.js'
 import { useToast } from './Toast.jsx'
 import { Card } from './primitives.jsx'
@@ -20,8 +21,11 @@ import { track } from '../lib/analytics.js'
  */
 export default function SaveExampleModal({ extractionId, defaultName, onClose }) {
   const { toast } = useToast()
+  const { organization } = useOrganization()
+  const orgId = organization?.id || null
   const [name, setName] = useState(defaultName || '')
   const [enabled, setEnabled] = useState(true)
+  const [shareWithOrg, setShareWithOrg] = useState(false)   // M7.2.b
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -35,9 +39,10 @@ export default function SaveExampleModal({ extractionId, defaultName, onClose })
     if (busy || !name.trim()) return
     setBusy(true)
     try {
-      await captureFewShotFromExtractionApi(extractionId, name.trim(), enabled)
-      track('few_shot_captured', { enabled })
-      toast.success(`Saved "${name.trim()}"${enabled ? ' (enabled)' : ' (disabled)'}`)
+      const targetOrgId = shareWithOrg && orgId ? orgId : null
+      await captureFewShotFromExtractionApi(extractionId, name.trim(), enabled, targetOrgId)
+      track('few_shot_captured', { enabled, scope: targetOrgId ? 'org' : 'user' })
+      toast.success(`Saved "${name.trim()}"${enabled ? ' (enabled)' : ' (disabled)'}${targetOrgId ? ' · org-shared' : ''}`)
       onClose()
     } catch (err) {
       toast.error(err.message || 'Could not save example')
@@ -101,6 +106,20 @@ export default function SaveExampleModal({ extractionId, defaultName, onClose })
             />
             Enable immediately (counts against your 3-active limit)
           </label>
+          {orgId && (
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 12.5, color: 'var(--text)', cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={shareWithOrg}
+                onChange={(e) => setShareWithOrg(e.target.checked)}
+                disabled={busy}
+              />
+              Share with everyone in this workspace (org-scope)
+            </label>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
             <button type="button" onClick={onClose} disabled={busy} style={ghostBtn}>Cancel</button>
             <button type="submit" disabled={busy || !name.trim()} style={primaryBtn}>

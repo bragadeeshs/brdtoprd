@@ -39,21 +39,40 @@ log = logging.getLogger("storyforge.few_shot")
 MAX_ENABLED = 3   # token-cost cap
 
 
-def resolve_enabled_examples(session: Session | None, user_id: str | None) -> list[FewShotExample]:
-    """Return up to MAX_ENABLED enabled examples for this user, oldest first
-    (so the order is stable across edits — newer examples don't bump older
-    ones out unpredictably). Tolerant of missing session/user_id (test paths
-    sometimes lack them) → empty list."""
+def resolve_enabled_examples(
+    session: Session | None,
+    user_id: str | None,
+    org_id: str | None = None,
+) -> list[FewShotExample]:
+    """Return up to MAX_ENABLED enabled examples visible to this caller.
+
+    M7.2.b — visibility = user-scoped examples (org_id IS NULL) UNION
+    org-scoped examples (org_id == caller's active org). User examples
+    appear first (priority for personal style) then org. The combined
+    set is capped at MAX_ENABLED to keep token cost bounded — a user
+    in an org with 3 active org-shared examples and 3 personal active
+    examples sees the 3 personals only. Reorder to taste later.
+
+    Tolerant of missing session / user_id → empty list."""
     if not session or not user_id:
         return []
-    rows = session.exec(
+    user_rows = session.exec(
         select(FewShotExample)
         .where(FewShotExample.user_id == user_id)
-        .where(FewShotExample.enabled == True)  # noqa: E712 — SQLAlchemy bool comparison
+        .where(FewShotExample.org_id.is_(None))  # type: ignore[union-attr]
+        .where(FewShotExample.enabled == True)  # noqa: E712
         .order_by(FewShotExample.created_at.asc())
-        .limit(MAX_ENABLED)
     ).all()
-    return list(rows)
+    out = list(user_rows)
+    if org_id and len(out) < MAX_ENABLED:
+        org_rows = session.exec(
+            select(FewShotExample)
+            .where(FewShotExample.org_id == org_id)
+            .where(FewShotExample.enabled == True)  # noqa: E712
+            .order_by(FewShotExample.created_at.asc())
+        ).all()
+        out.extend(org_rows)
+    return out[:MAX_ENABLED]
 
 
 def as_parse_messages(
