@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
+  addSlackWebhookApi,
   createApiTokenApi,
   createPromptTemplateApi,
   deleteFewShotExampleApi,
@@ -9,6 +10,7 @@ import {
   deleteNotionConnectionApi,
   deletePromptTemplateApi,
   deleteSlackConnectionApi,
+  deleteSlackWebhookApi,
   getGitHubConnectionApi,
   getJiraConnectionApi,
   getLinearConnectionApi,
@@ -22,6 +24,7 @@ import {
   listLinearTeamsApi,
   listNotionDatabasesApi,
   listPromptTemplatesApi,
+  listSlackWebhooksApi,
   patchFewShotExampleApi,
   patchPromptTemplateApi,
   putGitHubConnectionApi,
@@ -1158,6 +1161,191 @@ function SlackConnectionForm() {
   )
 }
 
+/* M6.6.b — Additional Slack destinations. Lives below the primary
+ * connection form. Each row = one named webhook (e.g. "stakeholders" /
+ * "dev-team-2"). Add form is inline; remove is one-click with a confirm.
+ * Hidden when no primary webhook is connected (the backend would 400 on
+ * any add attempt anyway). */
+function SlackAdditionalDestinations() {
+  const { toast } = useToast()
+  const [items, setItems] = useState(null)        // [] = empty list, null = loading
+  const [hasPrimary, setHasPrimary] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+  const [label, setLabel] = useState('')
+
+  const refresh = () => {
+    setLoading(true)
+    listSlackWebhooksApi()
+      .then((rows) => {
+        setHasPrimary(rows.some((d) => d.is_primary))
+        setItems(rows.filter((d) => !d.is_primary))
+      })
+      .catch((e) => toast.error(e.message || 'Could not load destinations'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // The endpoint returns [] when no Slack connection exists at all; in that
+  // case the primary form's empty state already nudges the user, so we hide
+  // this whole section to avoid noise.
+  if (!loading && !hasPrimary) return null
+
+  const submit = async () => {
+    if (!name.trim() || !url.trim()) {
+      toast.error('Name and URL required')
+      return
+    }
+    setBusy(true)
+    try {
+      await addSlackWebhookApi({
+        name: name.trim(),
+        webhook_url: url.trim(),
+        channel_label: label.trim() || null,
+      })
+      setName(''); setUrl(''); setLabel('')
+      setAdding(false)
+      refresh()
+      toast.success('Destination added')
+    } catch (e) {
+      toast.error(e.message || 'Could not add destination')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (id, dispName) => {
+    if (!window.confirm(`Remove "${dispName}"? Pushes targeting it will start failing.`)) return
+    setBusy(true)
+    try {
+      await deleteSlackWebhookApi(id)
+      refresh()
+      toast.success('Destination removed')
+    } catch (e) {
+      toast.error(e.message || 'Could not remove')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 8,
+      }}>
+        <FieldLabel>Additional destinations</FieldLabel>
+        {!adding && (
+          <Button variant="ghost" size="sm" onClick={() => setAdding(true)} disabled={busy}>
+            + Add destination
+          </Button>
+        )}
+      </div>
+      <p style={{ fontSize: 11.5, color: 'var(--text-soft)', margin: '0 0 10px', lineHeight: 1.5 }}>
+        Push to a different channel without changing your primary. The push modal lets you pick which
+        destination to send to.
+      </p>
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading…</div>
+      ) : items && items.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: adding ? 12 : 0 }}>
+          {items.map((d) => (
+            <div
+              key={d.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '8px 10px', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-strong)', fontWeight: 500 }}>
+                  {d.name}
+                  {d.channel_label && (
+                    <span style={{ color: 'var(--text-soft)', fontWeight: 400 }}> · {d.channel_label}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+                  {d.webhook_url_preview}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => remove(d.id, d.name)}
+                disabled={busy}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : !adding ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+          No additional destinations. Click <strong>+ Add destination</strong> above to send to multiple channels.
+        </div>
+      ) : null}
+
+      {adding && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 8,
+          marginTop: 8, padding: 12,
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+        }}>
+          <FieldLabel>Name</FieldLabel>
+          <input
+            type="text"
+            placeholder="e.g. stakeholders"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={busy}
+            style={inputStyle}
+          />
+          <FieldLabel>Webhook URL</FieldLabel>
+          <input
+            type="password"
+            placeholder="https://hooks.slack.com/services/T…/B…/…"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={busy}
+            style={inputStyle}
+          />
+          <FieldLabel>Channel name (cosmetic, optional)</FieldLabel>
+          <input
+            type="text"
+            placeholder="#stakeholders"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            disabled={busy}
+            style={inputStyle}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <Button variant="primary" size="sm" onClick={submit} disabled={busy}>
+              {busy ? 'Adding…' : 'Add destination'}
+            </Button>
+            <Button
+              variant="secondary" size="sm"
+              onClick={() => { setAdding(false); setName(''); setUrl(''); setLabel('') }}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 /* M6.5 — Notion connection form. Single token input + a prominent
  * reminder that the user must explicitly share each target database
  * with the integration in Notion (the API can't see databases that
@@ -2182,6 +2370,7 @@ export default function Settings() {
           description="Send unresolved gaps to a Slack channel as a Block Kit message. Webhook is bound to one channel — connect different webhooks for different channels."
         >
           <SlackConnectionForm />
+          <SlackAdditionalDestinations />
         </Section>
         <Section
           icon={<Plug size={16} />}

@@ -496,14 +496,47 @@ export async function deleteSlackConnectionApi({ scope = 'user' } = {}) {
 }
 
 /** Send unresolved gaps to the connected Slack channel.
- *  Returns {posted_gap_count: number}. include_resolved=true to send all. */
-export async function pushToSlackApi(extractionId, { include_resolved = false } = {}) {
+ *  Returns {posted_gap_count: number}. include_resolved=true to send all.
+ *  M6.6.b: webhook_id picks one of the named additional destinations;
+ *  omit/null to use the primary. */
+export async function pushToSlackApi(
+  extractionId,
+  { include_resolved = false, webhook_id = null } = {},
+) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/slack`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ include_resolved }),
+    body: JSON.stringify({ include_resolved, webhook_id }),
   })
   return jsonOrThrow(res)
+}
+
+/** M6.6.b — list every Slack destination on the active connection.
+ *  Returns [{id, name, webhook_url_preview, channel_label, is_primary}]. */
+export async function listSlackWebhooksApi() {
+  const res = await apiFetch('/api/integrations/slack/webhooks')
+  return jsonOrThrow(res)
+}
+
+/** Add a named additional Slack destination. Body: {name, webhook_url, channel_label?}. */
+export async function addSlackWebhookApi(body) {
+  const res = await apiFetch('/api/integrations/slack/webhooks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+/** Remove an additional destination by id. The primary is removed via
+ *  the connection-level Disconnect (deleteSlackConnectionApi). */
+export async function deleteSlackWebhookApi(webhookId) {
+  const res = await apiFetch(
+    `/api/integrations/slack/webhooks/${encodeURIComponent(webhookId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) await jsonOrThrow(res)
+  return null
 }
 
 // ---------- integrations: Notion (M6.5) ----------

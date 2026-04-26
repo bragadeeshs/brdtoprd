@@ -587,14 +587,45 @@ class SlackConnectionWrite(BaseModel):
 
 class PushToSlackRequest(BaseModel):
     """POST body — `include_resolved` lets the user re-send everything for
-    posterity (default: only unresolved gaps)."""
+    posterity (default: only unresolved gaps).
+
+    M6.6.b: `webhook_id` picks one of the named additional destinations; when
+    None, the primary webhook is used. The frontend's destination picker
+    only renders when there's at least one additional, so older clients that
+    don't send `webhook_id` keep working."""
     model_config = ConfigDict(extra="forbid")
     include_resolved: bool = False
+    webhook_id: str | None = None
 
 
 class PushToSlackResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     posted_gap_count: int
+
+
+class SlackWebhookRead(BaseModel):
+    """One named Slack destination as returned by GET /api/integrations/slack/webhooks (M6.6.b).
+
+    `id` is `__primary__` for the connection's primary webhook (the one
+    saved via the existing connection form); other ids are `wh_<base36>_<rand6>`
+    minted at create time for additional destinations.
+    """
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    webhook_url_preview: str         # https://hooks.slack.com/…/••••XYZK
+    channel_label: str | None = None
+    is_primary: bool = False
+
+
+class SlackWebhookCreate(BaseModel):
+    """POST /api/integrations/slack/webhooks body — adds a named additional
+    destination. The primary webhook is managed via the existing
+    /connection PUT route (unchanged)."""
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=80)
+    webhook_url: str
+    channel_label: str | None = None
 
 
 # ----- Integrations (M6.5 — Notion) -----

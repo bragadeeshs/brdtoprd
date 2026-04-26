@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { getSlackConnectionApi, pushToSlackApi } from '../api.js'
+import { listSlackWebhooksApi, pushToSlackApi } from '../api.js'
 import { useToast } from './Toast.jsx'
 import { Card } from './primitives.jsx'
 import { track } from '../lib/analytics.js'
@@ -17,7 +17,10 @@ import { track } from '../lib/analytics.js'
 
 export default function PushToSlackModal({ extraction, onClose }) {
   const { toast } = useToast()
-  const [conn, setConn] = useState(null)
+  // M6.6.b — destinations is the full list (primary + additional). Picked
+  // is the id we'll send to; defaults to first (typically the primary).
+  const [destinations, setDestinations] = useState(null)
+  const [picked, setPicked] = useState('')
   const [loadError, setLoadError] = useState(null)
   const [includeResolved, setIncludeResolved] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -25,11 +28,15 @@ export default function PushToSlackModal({ extraction, onClose }) {
 
   useEffect(() => {
     let alive = true
-    getSlackConnectionApi()
-      .then((c) => {
+    listSlackWebhooksApi()
+      .then((rows) => {
         if (!alive) return
-        if (!c) setLoadError({ status: 400, detail: 'No Slack connection saved.' })
-        else setConn(c)
+        if (!rows || rows.length === 0) {
+          setLoadError({ status: 400, detail: 'No Slack connection saved.' })
+        } else {
+          setDestinations(rows)
+          setPicked(rows[0].id)   // primary first when present
+        }
       })
       .catch((err) => {
         if (!alive) return
@@ -37,6 +44,8 @@ export default function PushToSlackModal({ extraction, onClose }) {
       })
     return () => { alive = false }
   }, [])
+
+  const pickedDest = destinations?.find((d) => d.id === picked)
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose() }
@@ -47,9 +56,18 @@ export default function PushToSlackModal({ extraction, onClose }) {
   const send = async () => {
     if (busy) return
     setBusy(true)
-    track('push_to_slack_started', { include_resolved: includeResolved })
+    // Backend treats the primary as default → don't send webhook_id when
+    // it's __primary__, keeps the wire payload identical for legacy users.
+    const sendWebhookId = picked && picked !== '__primary__' ? picked : null
+    track('push_to_slack_started', {
+      include_resolved: includeResolved,
+      destination: pickedDest?.is_primary ? 'primary' : 'additional',
+    })
     try {
-      const r = await pushToSlackApi(extraction.id, { include_resolved: includeResolved })
+      const r = await pushToSlackApi(extraction.id, {
+        include_resolved: includeResolved,
+        webhook_id: sendWebhookId,
+      })
       setResult(r)
       track('push_to_slack_finished', { posted: r.posted_gap_count })
     } catch (err) {
@@ -81,7 +99,7 @@ export default function PushToSlackModal({ extraction, onClose }) {
           <>
             <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 16 }}>
               Sent {result.posted_gap_count} gap{result.posted_gap_count === 1 ? '' : 's'}
-              {conn?.channel_label ? ` to ${conn.channel_label}` : ''}.
+              {pickedDest?.channel_label ? ` to ${pickedDest.channel_label}` : ''}.
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button type="button" onClick={onClose} style={primaryBtn}>Done</button>
@@ -101,7 +119,7 @@ export default function PushToSlackModal({ extraction, onClose }) {
               </a>
             </div>
           </>
-        ) : conn === null ? (
+        ) : destinations === null ? (
           <div style={{ padding: '20px 0', color: 'var(--text-soft)', fontSize: 13, textAlign: 'center' }}>
             Loading…
           </div>
@@ -109,9 +127,60 @@ export default function PushToSlackModal({ extraction, onClose }) {
           <>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.55 }}>
               Sending {gapCount > 0 ? gapCount : 'no'} gap{gapCount === 1 ? '' : 's'}
-              {conn?.channel_label ? ` to ${conn.channel_label}` : ''}.
+              {pickedDest?.channel_label ? ` to ${pickedDest.channel_label}` : ''}.
               {' '}Each gap renders as a Slack section block with severity, question, and context.
             </p>
+
+            {/* M6.6.b — destination picker. Only renders when 2+ exist
+                (single-destination users get the legacy clean UI). */}
+            {destinations.length > 1 && (
+              <>
+                <div style={{
+                  fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+                  color: 'var(--text-soft)', marginBottom: 6,
+                }}>
+                  Destination
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+                  {destinations.map((d) => (
+                    <label
+                      key={d.id}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 8,
+                        padding: '8px 10px', borderRadius: 'var(--radius-sm)',
+                        border: `1px solid ${picked === d.id ? 'var(--accent-strong)' : 'var(--border)'}`,
+                        cursor: busy ? 'not-allowed' : 'pointer',
+                        background: picked === d.id ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="slack-dest"
+                        value={d.id}
+                        checked={picked === d.id}
+                        onChange={() => setPicked(d.id)}
+                        disabled={busy}
+                        style={{ marginTop: 2 }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-strong)', fontWeight: 500 }}>
+                          {d.name}
+                          {d.is_primary && (
+                            <span style={{ fontSize: 11, color: 'var(--text-soft)', marginLeft: 6 }}>
+                              · primary
+                            </span>
+                          )}
+                          {d.channel_label && (
+                            <span style={{ color: 'var(--text-soft)', fontWeight: 400 }}> · {d.channel_label}</span>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
             <label style={{
               display: 'flex', alignItems: 'center', gap: 8,
               fontSize: 12.5, color: 'var(--text)', marginBottom: 16, cursor: 'pointer',

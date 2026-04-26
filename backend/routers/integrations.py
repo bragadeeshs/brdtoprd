@@ -54,6 +54,8 @@ from models import (
     PushToSlackResult,
     SlackConnectionRead,
     SlackConnectionWrite,
+    SlackWebhookCreate,
+    SlackWebhookRead,
 )
 from services.byok import decrypt_secret, encrypt_secret, key_preview
 from services.github import GitHubClient, push_extraction as push_extraction_github
@@ -585,6 +587,155 @@ def delete_slack_connection(
     session.commit()
 
 
+# ---- Slack additional webhooks (M6.6.b) ------------------------------------
+
+
+def _slack_destinations(row: IntegrationConnection) -> list[dict]:
+    """Return all destinations on this Slack connection (M6.6.b).
+
+    Shape: `[{id, name, webhook_url, channel_label, is_primary}]` with the
+    primary first when present, then each named additional in insertion
+    order. Used by `_resolve_slack_webhook` (push) and the list endpoint
+    (settings UI).
+    """
+    cfg = json.loads(row.config_json)
+    out: list[dict] = []
+    primary_enc = cfg.get("webhook_url_encrypted")
+    if primary_enc:
+        out.append({
+            "id": "__primary__",
+            "name": cfg.get("channel_label") or "Primary",
+            "webhook_url": decrypt_secret(primary_enc),
+            "channel_label": cfg.get("channel_label"),
+            "is_primary": True,
+        })
+    for w in (cfg.get("additional") or []):
+        url_enc = w.get("url_encrypted")
+        if not url_enc:
+            continue
+        out.append({
+            "id": w["id"],
+            "name": w.get("name") or "(unnamed)",
+            "webhook_url": decrypt_secret(url_enc),
+            "channel_label": w.get("label"),
+            "is_primary": False,
+        })
+    return out
+
+
+def _resolve_slack_webhook(row: IntegrationConnection, webhook_id: str | None) -> dict:
+    """Pick which destination a push targets. None or empty → primary."""
+    dests = _slack_destinations(row)
+    if not dests:
+        raise HTTPException(status_code=400, detail="No Slack destinations configured. Add one in Settings.")
+    if not webhook_id:
+        # Default: primary if present, else first additional.
+        return dests[0]
+    for d in dests:
+        if d["id"] == webhook_id:
+            return d
+    raise HTTPException(status_code=404, detail=f"Unknown Slack webhook: {webhook_id}")
+
+
+@router.get("/api/integrations/slack/webhooks", response_model=list[SlackWebhookRead])
+def list_slack_webhooks(session: SessionDep, user: UserDep):
+    """List every destination on the active Slack connection (M6.6.b).
+
+    Returns previews only — webhook URLs are never echoed back. Empty list
+    when no Slack connection saved (the route returns 200 + [] rather than
+    400 so the UI can render a "no destinations yet" state without a
+    second probe)."""
+    row = _get_connection(session, user, "slack")
+    if row is None:
+        return []
+    return [
+        SlackWebhookRead(
+            id=d["id"],
+            name=d["name"],
+            webhook_url_preview=_slack_url_preview(d["webhook_url"]),
+            channel_label=d.get("channel_label"),
+            is_primary=d["is_primary"],
+        )
+        for d in _slack_destinations(row)
+    ]
+
+
+@router.post("/api/integrations/slack/webhooks", response_model=SlackWebhookRead)
+def add_slack_webhook(payload: SlackWebhookCreate, session: SessionDep, user: UserDep):
+    """Add a named additional destination to the active Slack connection.
+
+    Requires the connection to exist (the primary webhook from the existing
+    /connection PUT). Returns 400 with a helpful message otherwise so the UI
+    can route the user back to the main form first."""
+    row = _get_connection(session, user, "slack")
+    if row is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Set a primary Slack webhook first via the connection form, then add additional destinations.",
+        )
+    url = (payload.webhook_url or "").strip()
+    if not url.startswith("https://hooks.slack.com/services/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Webhook URL must start with https://hooks.slack.com/services/",
+        )
+    cfg = json.loads(row.config_json)
+    additional = list(cfg.get("additional") or [])
+    # Cap — keeps the picker UI sensible. 25 destinations covers any real
+    # team; beyond that the picker becomes a long-list problem worth its
+    # own UX (search, grouping).
+    if len(additional) >= 25:
+        raise HTTPException(status_code=400, detail="Maximum 25 additional destinations reached.")
+
+    import secrets as _secrets
+    new_id = f"wh_{format(int(datetime.now(timezone.utc).timestamp() * 1000), 'x')}_{_secrets.token_hex(3)}"
+    additional.append({
+        "id": new_id,
+        "name": payload.name.strip(),
+        "url_encrypted": encrypt_secret(url),
+        "label": (payload.channel_label or None),
+    })
+    cfg["additional"] = additional
+    row.config_json = json.dumps(cfg)
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    return SlackWebhookRead(
+        id=new_id,
+        name=payload.name.strip(),
+        webhook_url_preview=_slack_url_preview(url),
+        channel_label=payload.channel_label,
+        is_primary=False,
+    )
+
+
+@router.delete("/api/integrations/slack/webhooks/{webhook_id}", status_code=204)
+def delete_slack_webhook(webhook_id: str, session: SessionDep, user: UserDep) -> None:
+    """Remove one named additional destination. Cannot remove `__primary__`
+    (that goes through the existing /connection DELETE so the UX stays
+    coherent — primary delete = full disconnect)."""
+    if webhook_id == "__primary__":
+        raise HTTPException(
+            status_code=400,
+            detail="To remove the primary webhook, use Disconnect in the connection form.",
+        )
+    row = _get_connection(session, user, "slack")
+    if row is None:
+        return
+    cfg = json.loads(row.config_json)
+    before = list(cfg.get("additional") or [])
+    after = [w for w in before if w.get("id") != webhook_id]
+    if len(after) == len(before):
+        return
+    cfg["additional"] = after
+    row.config_json = json.dumps(cfg)
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+
+
 @router.post("/api/extractions/{extraction_id}/push/slack", response_model=PushToSlackResult)
 def push_to_slack(
     extraction_id: str,
@@ -599,7 +750,9 @@ def push_to_slack(
     row = _get_connection(session, user, "slack")
     if row is None:
         raise HTTPException(status_code=400, detail="No Slack connection saved. Connect in Settings.")
-    cfg = _decrypt_slack_config(row)
+    # M6.6.b — resolve destination based on payload.webhook_id; defaults to
+    # primary when omitted so legacy clients keep working.
+    dest = _resolve_slack_webhook(row, payload.webhook_id)
 
     # Pull the resolved-gap indexes from gap_state so we can filter them
     # out of the post (default — user can override with include_resolved=true).
@@ -612,7 +765,7 @@ def push_to_slack(
         resolved_indexes = {gs.gap_idx for gs in rows if gs.resolved}
 
     posted = slack_post_gaps(
-        webhook_url=cfg["webhook_url"],
+        webhook_url=dest["webhook_url"],
         extraction=extraction,
         include_resolved=payload.include_resolved,
         gap_resolved_indexes=resolved_indexes,
