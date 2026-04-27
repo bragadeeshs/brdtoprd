@@ -314,8 +314,17 @@ function ThemePicker() {
  * generous breathing room, and a thin gradient accent line under the
  * heading row that introduces the brand mark beyond the 28px Sidebar
  * Logo. The page background carries an ambient soft gradient at the top
- * for depth without distraction. */
-function PageShell({ title, description, eyebrow, children }) {
+ * for depth without distraction.
+ *
+ * M10.6 — content column now CENTERED in the available width (was
+ * left-aligned), so the orphan-right whitespace becomes symmetric
+ * padding. `wide` prop bumps the column to 960px for pages with
+ * inherently-wide content (IntegrationsPage). The gradient backdrop
+ * extends further (480px) and fades to transparent via mask-image so
+ * the bottom edge no longer reads as a hard transition cliff.
+ */
+function PageShell({ title, description, eyebrow, children, wide = false }) {
+  const maxWidth = wide ? 960 : 720
   return (
     <div
       style={{
@@ -325,20 +334,32 @@ function PageShell({ title, description, eyebrow, children }) {
         background: 'var(--surface-0)',
       }}
     >
-      {/* Ambient brand wash — visible at the top of the page, fades
-          out by ~280px so the body content reads on solid surface. */}
+      {/* Ambient brand wash — extended to 480px and faded to transparent
+          via mask so it doesn't end on a visible hard line. The mask is
+          duplicated for WebKit browsers (Safari) since they still need
+          the prefixed property as of 2026. */}
       <div
         aria-hidden
         style={{
           position: 'absolute',
           top: 0, left: 0, right: 0,
-          height: 280,
+          height: 480,
           background: 'var(--gradient-soft)',
+          maskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
           pointerEvents: 'none',
           zIndex: 0,
         }}
       />
-      <div style={{ position: 'relative', zIndex: 1, padding: 'var(--space-7) var(--space-7) var(--space-8)' }}>
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          padding: 'var(--space-7) var(--space-7) var(--space-8)',
+          maxWidth,
+          margin: '0 auto',
+        }}
+      >
         {eyebrow && (
           <div
             style={{
@@ -393,7 +414,7 @@ function PageShell({ title, description, eyebrow, children }) {
             {description}
           </p>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: 720 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           {children}
         </div>
       </div>
@@ -2574,6 +2595,7 @@ export function IntegrationsPage() {
     <PageShell
       title="Integrations"
       description="Push extracted artifacts into the tools your team already uses."
+      wide
     >
       <Section
         icon={<Plug size={16} />}

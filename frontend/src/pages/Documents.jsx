@@ -496,25 +496,27 @@ export default function Documents() {
   if (loading) {
     return (
       <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <h1
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 24,
-              fontWeight: 600,
-              color: 'var(--text-strong)',
-              margin: 0,
-              letterSpacing: -0.3,
-            }}
-          >
-            Documents
-          </h1>
-          <Spinner size={16} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[0, 1, 2, 3].map((i) => (
-            <SkeletonRow key={i} delay={i * 60} />
-          ))}
+        <div style={{ maxWidth: 960, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <h1
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--text-3xl)',
+                fontWeight: 600,
+                color: 'var(--text-strong)',
+                margin: 0,
+                letterSpacing: 'var(--tracking-tight)',
+              }}
+            >
+              Documents
+            </h1>
+            <Spinner size={16} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <SkeletonRow key={i} delay={i * 60} />
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -532,6 +534,7 @@ export default function Documents() {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
       {/* Header — swaps to bulk-action mode when hasSelection (M11). */}
       {hasSelection ? (
         <div
@@ -610,6 +613,7 @@ export default function Documents() {
               color: 'var(--text-strong)',
               margin: 0,
               letterSpacing: 'var(--tracking-tight)',
+              lineHeight: 'var(--leading-tight)',
             }}
           >
             Documents
@@ -917,6 +921,7 @@ export default function Documents() {
             </Card>
           )
         })}
+      </div>
       </div>
     </div>
   )
