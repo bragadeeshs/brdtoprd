@@ -255,31 +255,54 @@ export default function CommentThread({
 
   const count = comments.length
 
+  // M8.4 — stronger affordance when a thread exists. When count > 0 the
+  // button renders as a soft accent pill with the count + the word
+  // "comment(s)" so it scans as a real piece of content, not a stray
+  // icon. When count === 0 the button stays quiet (bare icon) but gains
+  // a hover background so first-time users notice it as clickable.
+  const hasComments = count > 0
+  const baseStyle = {
+    border: 'none',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 11,
+    fontFamily: 'inherit',
+    fontWeight: hasComments ? 500 : 400,
+    lineHeight: 1,
+    borderRadius: 'var(--radius-pill)',
+    padding: hasComments ? '4px 9px' : 4,
+    background: hasComments ? 'var(--accent-soft)' : 'transparent',
+    color: hasComments ? 'var(--accent-ink)' : 'var(--text-soft)',
+    transition: 'background .12s, color .12s',
+  }
+
   return (
     <span style={{ position: 'relative', display: 'inline-block' }}>
       <button
         ref={btnRef}
         type="button"
         onClick={() => setOpen((x) => !x)}
-        title={count ? `${count} comment${count === 1 ? '' : 's'}` : 'Add comment'}
-        aria-label={count ? `${count} comments` : 'Add comment'}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          padding: 4,
-          cursor: 'pointer',
-          color: count > 0 ? 'var(--accent-strong)' : 'var(--text-soft)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 3,
-          fontSize: 11,
-          fontFamily: 'var(--font-mono)',
-          lineHeight: 1,
-          borderRadius: 'var(--radius-sm)',
+        title={count ? `${count} comment${count === 1 ? '' : 's'} — click to open` : 'Add a comment'}
+        aria-label={count ? `${count} comments — click to open` : 'Add a comment'}
+        style={baseStyle}
+        onMouseEnter={(e) => {
+          if (hasComments) e.currentTarget.style.background = 'var(--accent)'
+          else e.currentTarget.style.background = 'var(--bg-hover)'
+          if (hasComments) e.currentTarget.style.color = '#fff'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = baseStyle.background
+          e.currentTarget.style.color = baseStyle.color
         }}
       >
-        <MessageSquare size={13} />
-        {count > 0 && <span>{count}</span>}
+        <MessageSquare size={12} />
+        {hasComments && (
+          <span>
+            {count} {count === 1 ? 'comment' : 'comments'}
+          </span>
+        )}
       </button>
 
       {open && (
