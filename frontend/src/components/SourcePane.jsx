@@ -162,7 +162,7 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
       {/* Header */}
       <div
         style={{
-          padding: '20px 24px 14px',
+          padding: 'var(--space-5) var(--space-6) var(--space-4)',
           borderBottom: '1px solid var(--border)',
           background: 'var(--bg-subtle)',
           position: 'sticky',
@@ -170,15 +170,15 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
           zIndex: 1,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <FileText size={16} style={{ color: 'var(--text-muted)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+          <FileText size={14} style={{ color: 'var(--text-muted)' }} />
           <span
             style={{
-              fontSize: 11,
+              fontSize: 'var(--text-xs)',
               fontWeight: 600,
               textTransform: 'uppercase',
-              letterSpacing: 0.6,
-              color: 'var(--text-soft)',
+              letterSpacing: 'var(--tracking-wide)',
+              color: 'var(--accent-strong)',
             }}
           >
             Source
@@ -187,12 +187,13 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
         <div
           style={{
             fontFamily: 'var(--font-display)',
-            fontSize: 18,
+            fontSize: 'var(--text-xl)',
             fontWeight: 600,
             color: 'var(--text-strong)',
-            marginBottom: 8,
+            marginBottom: 'var(--space-2)',
             wordBreak: 'break-word',
-            lineHeight: 1.3,
+            lineHeight: 'var(--leading-snug)',
+            letterSpacing: 'var(--tracking-tight)',
           }}
         >
           {extraction.filename}

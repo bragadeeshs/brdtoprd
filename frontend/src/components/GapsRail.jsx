@@ -484,7 +484,7 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
       {/* Header */}
       <div
         style={{
-          padding: '20px 18px 14px',
+          padding: 'var(--space-5) var(--space-4) var(--space-4)',
           borderBottom: '1px solid var(--border)',
           background: 'var(--bg-subtle)',
           position: 'sticky',
@@ -492,7 +492,7 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
           zIndex: 1,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <IconTile tone="warn" size={32}>
             <AlertTriangle size={15} />
           </IconTile>
@@ -500,22 +500,23 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
             <div
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 15,
+                fontSize: 'var(--text-lg)',
                 fontWeight: 600,
                 color: 'var(--text-strong)',
-                lineHeight: 1.2,
+                lineHeight: 'var(--leading-snug)',
+                letterSpacing: 'var(--tracking-tight)',
               }}
             >
               Gaps & questions
             </div>
             <div
               style={{
-                fontSize: 11.5,
+                fontSize: 'var(--text-xs)',
                 color: 'var(--text-soft)',
-                marginTop: 2,
+                marginTop: 'var(--space-1)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
+                gap: 'var(--space-2)',
                 flexWrap: 'wrap',
               }}
             >

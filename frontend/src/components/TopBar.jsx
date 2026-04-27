@@ -327,22 +327,22 @@ export default function TopBar({
         borderBottom: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 18px',
-        gap: 10,
+        padding: '0 var(--space-5)',
+        gap: 'var(--space-3)',
         flexShrink: 0,
-        background: 'var(--bg-elevated)',
+        background: 'var(--surface-1)',
       }}
     >
       {extraction ? (
         <>
-          <span style={{ color: 'var(--text-muted)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <FileText size={14} />
             Documents
           </span>
           <ChevronRight size={14} style={{ color: 'var(--text-soft)' }} />
           <span
             style={{
-              fontSize: 13,
+              fontSize: 'var(--text-sm)',
               fontWeight: 500,
               color: 'var(--text-strong)',
               maxWidth: 360,

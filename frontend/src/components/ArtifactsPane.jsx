@@ -777,19 +777,20 @@ export default function ArtifactsPane({
               type="button"
               onClick={() => onTabClick(s.id)}
               aria-current={isActive ? 'true' : undefined}
+              className="btn-press"
               style={{
-                padding: '6px 12px',
+                padding: 'var(--space-2) var(--space-3)',
                 borderRadius: 'var(--radius-pill)',
-                fontSize: 12,
-                fontWeight: 500,
+                fontSize: 'var(--text-sm)',
+                fontWeight: isActive ? 600 : 500,
                 color: isActive ? 'var(--text-strong)' : 'var(--text-muted)',
-                background: isActive ? 'var(--bg-elevated)' : 'transparent',
+                background: isActive ? 'var(--surface-1)' : 'transparent',
                 border: 'none',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 6,
+                gap: 'var(--space-2)',
                 cursor: 'pointer',
-                transition: 'background .12s, color .12s, box-shadow .12s',
+                transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
                 boxShadow: isActive ? 'var(--shadow-xs)' : 'none',
                 fontFamily: 'inherit',
               }}
@@ -806,7 +807,7 @@ export default function ArtifactsPane({
               {count != null && (
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 'var(--text-xs)',
                     fontFamily: 'var(--font-mono)',
                     color: isActive ? 'var(--accent-strong)' : 'var(--text-soft)',
                   }}
