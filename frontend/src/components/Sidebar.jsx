@@ -5,6 +5,7 @@ import { createProjectApi } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from './Toast.jsx'
 import { Badge, IconButton } from './primitives.jsx'
+import SidebarExtractionSection from './SidebarExtractionSection.jsx'
 import {
   Edit,
   FileText,
@@ -165,7 +166,7 @@ function ProjectsSection() {
   )
 }
 
-export default function Sidebar({ onNew }) {
+export default function Sidebar({ onNew, extractionContext }) {
   return (
     <aside
       style={{
@@ -239,6 +240,9 @@ export default function Sidebar({ onNew }) {
           <NavItem icon={<User size={16} />} label="Account" to="/account" />
           <NavItem icon={<Settings size={16} />} label="Settings" to="/settings" />
         </div>
+        {/* M8.1 — Studio context. Renders only when an extraction is open
+            (App.jsx passes null otherwise). */}
+        {extractionContext && <SidebarExtractionSection {...extractionContext} />}
       </div>
 
       {/* M3.5 — usage bar above the user pill */}

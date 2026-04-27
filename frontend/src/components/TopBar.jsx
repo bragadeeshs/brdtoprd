@@ -1,14 +1,11 @@
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { downloadExtractionDocxApi, listVersionsApi } from '../api.js'
+import React, { useState } from 'react'
+import { downloadExtractionDocxApi } from '../api.js'
 import { track } from '../lib/analytics.js'
 import { buildCsv, buildJson, buildMarkdown, downloadFile, exportBaseName } from '../lib/exports.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Button, IconButton } from './primitives.jsx'
 import {
   AlertTriangle,
-  Check,
-  ChevronDown,
   ChevronRight,
   Download,
   FileText,
@@ -217,184 +214,9 @@ function ExportMenuItem({ onClick, title, hint }) {
   )
 }
 
-function fmtTime(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-/**
- * Version selector — clickable badge that opens a dropdown listing all
- * versions in this extraction's chain. Hides itself when versions.length<=1.
- */
-function VersionPicker({ versions, currentId, onPick }) {
-  const [open, setOpen] = useState(false)
-  const navigate = useNavigate()
-  const current = versions.find((v) => v.id === currentId)
-  const total = versions.length
-
-  if (total <= 1 || !current) return null
-
-  // M7.6 — open the diff route. Convention: idA = older / left side,
-  // idB = current. Sorts by version so v2 → v5 reads naturally.
-  const compare = (otherId) => {
-    setOpen(false)
-    const a = versions.find((v) => v.id === otherId)
-    const b = current
-    const [oldId, newId] = (a && b && a.version < b.version) ? [a.id, b.id] : [b.id, otherId]
-    navigate(`/compare/${oldId}/${newId}`)
-  }
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((s) => !s)}
-        title="Show all versions of this document"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '3px 8px',
-          borderRadius: 'var(--radius-pill)',
-          background: 'var(--accent-soft)',
-          color: 'var(--accent-ink)',
-          border: 'none',
-          fontSize: 11.5,
-          fontWeight: 500,
-          fontFamily: 'inherit',
-          cursor: 'pointer',
-        }}
-      >
-        v{current.version} of {total}
-        <ChevronDown size={11} />
-      </button>
-      {open && (
-        <>
-          <div
-            onClick={(e) => { e.stopPropagation(); setOpen(false) }}
-            style={{ position: 'fixed', inset: 0, zIndex: 50 }}
-          />
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: 4,
-              minWidth: 240,
-              maxHeight: 300,
-              overflowY: 'auto',
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              boxShadow: 'var(--shadow-lg)',
-              zIndex: 51,
-              padding: 4,
-            }}
-          >
-            <div
-              style={{
-                padding: '6px 10px 4px',
-                fontSize: 10,
-                fontWeight: 600,
-                letterSpacing: 0.6,
-                textTransform: 'uppercase',
-                color: 'var(--text-soft)',
-              }}
-            >
-              All versions
-            </div>
-            {versions.map((v) => {
-              const isCurrent = v.id === currentId
-              return (
-                <div
-                  key={v.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    width: '100%',
-                    background: isCurrent ? 'var(--accent-soft)' : 'transparent',
-                    borderRadius: 'var(--radius-sm)',
-                  }}
-                  onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = 'var(--bg-hover)' }}
-                  onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = 'transparent' }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => { setOpen(false); onPick(v.id) }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      flex: 1,
-                      padding: '6px 10px',
-                      background: 'transparent',
-                      border: 'none',
-                      borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
-                      fontSize: 12.5,
-                      color: 'var(--text-strong)',
-                      textAlign: 'left',
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 22,
-                        flexShrink: 0,
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 11,
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      v{v.version}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, color: 'var(--text-strong)' }}>{fmtTime(v.created_at)}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {v.live ? v.model_used : 'mock'}
-                      </div>
-                    </span>
-                    {isCurrent && <Check size={13} style={{ color: 'var(--accent-strong)', flexShrink: 0 }} />}
-                  </button>
-                  {/* M7.6 — Compare link, hidden on the current row (no
-                   *  comparing v3 to v3). Quiet styling so it doesn't
-                   *  pull attention from the primary "switch to" action. */}
-                  {!isCurrent && (
-                    <button
-                      type="button"
-                      onClick={() => compare(v.id)}
-                      title={`Compare v${v.version} with current`}
-                      style={{
-                        marginRight: 6,
-                        padding: '4px 8px',
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: 'var(--radius-sm)',
-                        color: 'var(--accent-strong)',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        fontWeight: 500,
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      Compare
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
+// M8.1 — VersionPicker + fmtTime moved to SidebarExtractionSection. The
+// version chip + per-version Compare link now live in the Sidebar's
+// "This document" section.
 
 export default function TopBar({
   extraction,
@@ -403,11 +225,8 @@ export default function TopBar({
   rerunning,
   theme,
   onTheme,
-  showGaps,
-  onToggleGaps,
   onReset,
   onRerun,
-  onSwitchVersion,
   onShare,
   onPushToJira,
   onPushToLinear,
@@ -415,23 +234,11 @@ export default function TopBar({
   onPushToSlack,
   onPushToNotion,
   onSaveAsExample,
+  // M8.1 — Sidebar's "This document" section now owns the live version
+  // chip; pass the current version label down so the run-state Badge can
+  // still render "Live · v3" without re-fetching.
+  currentVersion,
 }) {
-  const [versions, setVersions] = useState([])
-
-  // Re-fetch the version chain whenever the open extraction changes. Don't
-  // block rendering on this — the picker only appears when total > 1, so a
-  // single-version extraction never sees the dropdown anyway.
-  useEffect(() => {
-    let alive = true
-    if (!extractionId) { setVersions([]); return }
-    listVersionsApi(extractionId)
-      .then((vs) => { if (alive) setVersions(vs) })
-      .catch(() => { if (alive) setVersions([]) })
-    return () => { alive = false }
-  }, [extractionId])
-
-  const currentVersion = versions.find((v) => v.id === extractionId)?.version
-
   return (
     <div
       style={{
@@ -465,7 +272,6 @@ export default function TopBar({
           >
             {extraction.filename}
           </span>
-          <VersionPicker versions={versions} currentId={extractionId} onPick={onSwitchVersion} />
           {loading || rerunning ? (
             <Badge tone="info" icon={<Sparkles size={12} />}>
               {rerunning ? 'Re-running' : 'Running'}
@@ -501,13 +307,8 @@ export default function TopBar({
 
       {extraction && (
         <>
-          <IconButton
-            label={showGaps ? 'Hide gaps panel' : 'Show gaps panel'}
-            onClick={onToggleGaps}
-            active={showGaps}
-          >
-            <AlertTriangle size={15} />
-          </IconButton>
+          {/* M8.1 — gaps toggle relocated to the Sidebar's "This document"
+              section (the gaps badge is clickable). */}
           <Button
             variant="secondary"
             size="sm"

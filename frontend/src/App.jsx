@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
-import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -490,6 +490,20 @@ function AuthedApp() {
   const onCommentPatch = (c) => setComments((prev) => prev.map((x) => (x.id === c.id ? c : x)))
   const onCommentDelete = (id) => setComments((prev) => prev.filter((x) => x.id !== id))
 
+  // M8.1 — version chain lifted from TopBar to App-level so the Sidebar's
+  // "This document" section + the (now-stripped) TopBar version picker share
+  // one source of truth. Re-fetched whenever the open extraction changes;
+  // empty array while no extraction is open.
+  const [versions, setVersions] = useState([])
+  useEffect(() => {
+    if (!extractionId) { setVersions([]); return }
+    let alive = true
+    listVersionsApi(extractionId)
+      .then((vs) => { if (alive) setVersions(vs || []) })
+      .catch(() => { if (alive) setVersions([]) })
+    return () => { alive = false }
+  }, [extractionId])
+
   // M4.6 — share modal toggle. Owner-only since it's mounted in TopBar
   // alongside other owner controls; the public viewer renders ShareView
   // (a different page) and never sees this state.
@@ -599,7 +613,17 @@ function AuthedApp() {
   return (
     <AppProvider value={appCtx}>
     <div className="app">
-      <Sidebar onNew={reset} />
+      <Sidebar
+        onNew={reset}
+        extractionContext={extraction && isHome ? {
+          extraction,
+          versions,
+          comments,
+          showGaps,
+          onSwitchVersion: switchVersion,
+          onToggleGaps: () => setShowGaps((x) => !x),
+        } : null}
+      />
       <main className="main">
         <TopBar
           extraction={extraction}
@@ -608,11 +632,8 @@ function AuthedApp() {
           rerunning={rerunning}
           theme={theme}
           onTheme={setTheme}
-          showGaps={showGaps}
-          onToggleGaps={() => setShowGaps((x) => !x)}
           onReset={reset}
           onRerun={handleRerun}
-          onSwitchVersion={switchVersion}
           onShare={extractionId ? () => setShareOpen(true) : undefined}
           onPushToJira={extractionId ? () => setPushJiraOpen(true) : undefined}
           onPushToLinear={extractionId ? () => setPushLinearOpen(true) : undefined}
@@ -620,6 +641,7 @@ function AuthedApp() {
           onPushToSlack={extractionId ? () => setPushSlackOpen(true) : undefined}
           onPushToNotion={extractionId ? () => setPushNotionOpen(true) : undefined}
           onSaveAsExample={extractionId ? () => setSaveExampleOpen(true) : undefined}
+          currentVersion={versions.find((v) => v.id === extractionId)?.version}
         />
         <Routes>
           <Route
