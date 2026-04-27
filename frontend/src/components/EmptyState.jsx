@@ -74,29 +74,53 @@ export default function EmptyState({ onSubmit, loading }) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '64px 20px 40px',
+        padding: 'var(--space-10) var(--space-5) var(--space-8)',
         overflow: 'auto',
+        position: 'relative',
+        background: 'var(--surface-0)',
       }}
     >
+      {/* M10.2 — ambient hero gradient backdrop. The brand bloom we
+          intentionally locked into the 28px Sidebar Logo before now
+          gets one place to breathe at hero scale. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          height: 420,
+          background: 'var(--gradient-soft)',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
       {/* Hero */}
-      <div style={{ textAlign: 'center', maxWidth: 640, marginBottom: 36 }}>
-        <Badge tone="accent" icon={<Sparkles size={11} />} style={{ marginBottom: 18 }}>
+      <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 720, marginBottom: 'var(--space-8)' }}>
+        <Badge tone="accent" icon={<Sparkles size={11} />} style={{ marginBottom: 'var(--space-5)' }}>
           Powered by Claude Opus 4.7
         </Badge>
         <h1
           style={{
             fontFamily: 'var(--font-display)',
-            fontSize: 40,
-            lineHeight: 1.15,
+            fontSize: 'var(--text-5xl)',
+            lineHeight: 'var(--leading-tight)',
             fontWeight: 600,
-            margin: '0 0 12px',
-            letterSpacing: -0.5,
+            margin: '0 0 var(--space-4)',
+            letterSpacing: 'var(--tracking-tighter)',
             color: 'var(--text-strong)',
           }}
         >
           What are we turning <span className="gradient-text">into stories</span> today?
         </h1>
-        <p style={{ fontSize: 14.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        <p style={{
+          fontSize: 'var(--text-lg)',
+          color: 'var(--text-muted)',
+          margin: 0,
+          lineHeight: 'var(--leading-base)',
+          maxWidth: 580,
+          marginLeft: 'auto',
+          marginRight: 'auto',
+        }}>
           Drop a messy requirement document — get a clean brief, actors, user stories with acceptance
           criteria, NFRs and gap analysis in one pass.
         </p>

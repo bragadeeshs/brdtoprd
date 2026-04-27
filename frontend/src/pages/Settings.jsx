@@ -310,45 +310,92 @@ function ThemePicker() {
   )
 }
 
-/* M9.2 — shared page wrapper used by every left-nav top-level page
- * (Settings, Models, Tools, Integrations, Support). Single place to
- * tune the heading + body padding so the pages don't drift apart. */
-function PageShell({ title, description, children }) {
+/* M10.2 — shared page wrapper. Bigger display heading (32px Fraunces),
+ * generous breathing room, and a thin gradient accent line under the
+ * heading row that introduces the brand mark beyond the 28px Sidebar
+ * Logo. The page background carries an ambient soft gradient at the top
+ * for depth without distraction. */
+function PageShell({ title, description, eyebrow, children }) {
   return (
     <div
       style={{
         flex: 1,
         overflow: 'auto',
-        padding: '24px 28px 40px',
-        background: 'var(--bg)',
+        position: 'relative',
+        background: 'var(--surface-0)',
       }}
     >
-      <h1
+      {/* Ambient brand wash — visible at the top of the page, fades
+          out by ~280px so the body content reads on solid surface. */}
+      <div
+        aria-hidden
         style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 24,
-          fontWeight: 600,
-          color: 'var(--text-strong)',
-          margin: '0 0 6px',
-          letterSpacing: -0.3,
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          height: 280,
+          background: 'var(--gradient-soft)',
+          pointerEvents: 'none',
+          zIndex: 0,
         }}
-      >
-        {title}
-      </h1>
-      {description && (
-        <p
+      />
+      <div style={{ position: 'relative', zIndex: 1, padding: 'var(--space-7) var(--space-7) var(--space-8)' }}>
+        {eyebrow && (
+          <div
+            style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              color: 'var(--accent-strong)',
+              marginBottom: 'var(--space-2)',
+            }}
+          >
+            {eyebrow}
+          </div>
+        )}
+        <h1
           style={{
-            fontSize: 13.5,
-            color: 'var(--text-muted)',
-            margin: '0 0 22px',
-            maxWidth: 640,
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-3xl)',
+            fontWeight: 600,
+            color: 'var(--text-strong)',
+            margin: 0,
+            lineHeight: 'var(--leading-tight)',
+            letterSpacing: 'var(--tracking-tight)',
           }}
         >
-          {description}
-        </p>
-      )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 720 }}>
-        {children}
+          {title}
+        </h1>
+        {/* Thin gradient accent — quietly carries the brand without
+            shouting, like Linear's underline-on-hover or the Vercel
+            page-marker. */}
+        <div
+          aria-hidden
+          style={{
+            width: 56,
+            height: 3,
+            borderRadius: 'var(--radius-pill)',
+            background: 'var(--gradient-hero)',
+            marginTop: 'var(--space-3)',
+            marginBottom: description ? 'var(--space-3)' : 'var(--space-6)',
+          }}
+        />
+        {description && (
+          <p
+            style={{
+              fontSize: 'var(--text-md)',
+              color: 'var(--text-muted)',
+              margin: '0 0 var(--space-6)',
+              maxWidth: 640,
+              lineHeight: 'var(--leading-base)',
+            }}
+          >
+            {description}
+          </p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: 720 }}>
+          {children}
+        </div>
       </div>
     </div>
   )
