@@ -319,6 +319,9 @@ export default function Documents() {
   const [selected, setSelected] = useState(() => new Set())
   // M11 — bulk move-to-project menu visibility.
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false)
+  // M11.b — anchor for shift-click range select. Updated on every plain
+  // checkbox click; shift+click extends from anchor to the new id.
+  const lastClickedIdRef = useRef(null)
 
   // Run a fresh fetch with the current query. Used by Retry + the undo flow.
   const refresh = async (q = query) => {
@@ -411,13 +414,34 @@ export default function Documents() {
   // M11 — selection helpers + bulk actions.
   const hasSelection = selected.size > 0
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
-  const toggleSelect = (id) => {
+  // M11.b — shift-aware. When the underlying event carries shiftKey AND we
+  // have a previous anchor in the current filtered list, extend selection
+  // from anchor to id (inclusive) using the *current visible order* (so a
+  // search-filtered subset selects the visible rows between, not the
+  // off-screen ones). Otherwise toggle just this id.
+  const toggleSelect = (id, event) => {
+    if (event?.shiftKey && lastClickedIdRef.current && lastClickedIdRef.current !== id) {
+      const ids = filtered.map((r) => r.id)
+      const a = ids.indexOf(lastClickedIdRef.current)
+      const b = ids.indexOf(id)
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a]
+        setSelected((prev) => {
+          const next = new Set(prev)
+          for (let i = lo; i <= hi; i++) next.add(ids[i])
+          return next
+        })
+        lastClickedIdRef.current = id
+        return
+      }
+    }
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+    lastClickedIdRef.current = id
   }
   const clearSelection = () => setSelected(new Set())
   const toggleSelectAll = () => {
@@ -713,11 +737,12 @@ export default function Documents() {
               hover
               padding={14}
               className="doc-row"
-              onClick={() => {
+              onClick={(e) => {
                 // M11 — when a selection is active, clicking the row toggles
                 // selection instead of opening (Linear-style); to actually
                 // open, the user clears the selection first.
-                if (hasSelection) toggleSelect(r.id)
+                // M11.b — shift held → range select via the same helper.
+                if (hasSelection || e.shiftKey) toggleSelect(r.id, e)
                 else onOpen(r)
               }}
               style={{
@@ -739,8 +764,15 @@ export default function Documents() {
                 type="checkbox"
                 className="row-checkbox"
                 checked={isSelected}
-                onClick={(e) => e.stopPropagation()}
-                onChange={() => toggleSelect(r.id)}
+                onClick={(e) => {
+                  // M11.b — shift-click for range select. We capture the
+                  // shift state on click (onChange's synthetic event lacks
+                  // it cleanly across browsers) and run the same helper;
+                  // stopPropagation so the row's onClick doesn't double-fire.
+                  e.stopPropagation()
+                  toggleSelect(r.id, e)
+                }}
+                onChange={() => { /* handled by onClick */ }}
                 aria-label={`Select ${r.filename}`}
                 style={{
                   width: 16,
