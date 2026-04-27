@@ -136,6 +136,14 @@ export const ChevronsUpDown = (p) => (
   </I>
 )
 
+export const MoreHorizontal = (p) => (
+  <I {...p}>
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+    <circle cx="5" cy="12" r="1" />
+  </I>
+)
+
 export const Sun = (p) => (
   <I {...p}>
     <circle cx="12" cy="12" r="4" />
@@ -344,14 +352,6 @@ export const GripVertical = (p) => (
     <circle cx="15" cy="6" r="1.2" />
     <circle cx="15" cy="12" r="1.2" />
     <circle cx="15" cy="18" r="1.2" />
-  </I>
-)
-
-export const MoreHorizontal = (p) => (
-  <I {...p}>
-    <circle cx="12" cy="12" r="1.2" />
-    <circle cx="19" cy="12" r="1.2" />
-    <circle cx="5" cy="12" r="1.2" />
   </I>
 )
 

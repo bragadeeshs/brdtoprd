@@ -9,12 +9,10 @@ import {
   ChevronRight,
   Download,
   FileText,
-  Moon,
+  MoreHorizontal,
   Plug,
   RefreshCw,
-  Share2,
   Sparkles,
-  Sun,
   Zap,
 } from './icons.jsx'
 
@@ -218,6 +216,89 @@ function ExportMenuItem({ onClick, title, hint }) {
 // version chip + per-version Compare link now live in the Sidebar's
 // "This document" section.
 
+/* M8.3 — Overflow `…` menu. Hosts low-frequency actions (Share, Save as
+ * example) + the theme toggle so the TopBar primary row doesn't grow as
+ * we add features. Same dropdown shape as ExportMenu / PushMenu so users
+ * already know the interaction. Items render conditionally so an
+ * extraction-less view doesn't show a stub menu. */
+function OverflowMenu({ theme, onTheme, onShare, onSaveAsExample }) {
+  const [open, setOpen] = useState(false)
+  const popRef = React.useRef(null)
+  const btnRef = React.useRef(null)
+
+  React.useEffect(() => {
+    if (!open) return
+    const onClick = (e) => {
+      if (popRef.current?.contains(e.target)) return
+      if (btnRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('mousedown', onClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const themeLabel = theme === 'light' ? 'Switch to dark mode'
+                   : theme === 'dark'  ? 'Switch to system theme'
+                   :                     'Switch to light mode'
+  const cycleTheme = () => {
+    setOpen(false)
+    onTheme?.(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')
+  }
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <span ref={btnRef} style={{ display: 'inline-block' }}>
+        <IconButton label="More actions" onClick={() => setOpen((s) => !s)}>
+          <MoreHorizontal size={15} />
+        </IconButton>
+      </span>
+      {open && (
+        <div
+          ref={popRef}
+          role="menu"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            right: 0,
+            minWidth: 200,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: 4,
+            zIndex: 50,
+          }}
+        >
+          {typeof onShare === 'function' && (
+            <ExportMenuItem
+              onClick={() => { setOpen(false); onShare() }}
+              title="Share"
+              hint="Generate a public read-only URL"
+            />
+          )}
+          {typeof onSaveAsExample === 'function' && (
+            <ExportMenuItem
+              onClick={() => { setOpen(false); onSaveAsExample() }}
+              title="Save as example"
+              hint="Capture for few-shot examples"
+            />
+          )}
+          <ExportMenuItem
+            onClick={cycleTheme}
+            title={themeLabel}
+            hint={`Currently: ${theme}`}
+          />
+        </div>
+      )}
+    </span>
+  )
+}
+
 export default function TopBar({
   extraction,
   extractionId,
@@ -298,17 +379,11 @@ export default function TopBar({
 
       <div style={{ flex: 1 }} />
 
-      <IconButton
-        label={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
-        onClick={() => onTheme(theme === 'light' ? 'dark' : 'light')}
-      >
-        {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
-      </IconButton>
-
+      {/* M8.3 — primary row: Re-run + New + Push + Export only. Theme,
+          Share, Save-as-example moved to the OverflowMenu so the row
+          stays scannable as we add features. */}
       {extraction && (
         <>
-          {/* M8.1 — gaps toggle relocated to the Sidebar's "This document"
-              section (the gaps badge is clickable). */}
           <Button
             variant="secondary"
             size="sm"
@@ -322,17 +397,6 @@ export default function TopBar({
           <Button variant="secondary" size="sm" icon={<RefreshCw size={13} />} onClick={onReset}>
             New
           </Button>
-          {typeof onShare === 'function' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Share2 size={13} />}
-              onClick={onShare}
-              title="Generate a public read-only URL for this document"
-            >
-              Share
-            </Button>
-          )}
           {(typeof onPushToJira === 'function' || typeof onPushToLinear === 'function' || typeof onPushToGitHub === 'function' || typeof onPushToSlack === 'function' || typeof onPushToNotion === 'function') && (
             <PushMenu
               onPushToJira={onPushToJira}
@@ -343,20 +407,15 @@ export default function TopBar({
               busy={loading || rerunning}
             />
           )}
-          {typeof onSaveAsExample === 'function' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Sparkles size={13} />}
-              onClick={onSaveAsExample}
-              title="Capture this extraction as a few-shot example for future runs"
-            >
-              Save as example
-            </Button>
-          )}
           <ExportMenu extraction={extraction} busy={loading || rerunning} />
         </>
       )}
+      <OverflowMenu
+        theme={theme}
+        onTheme={onTheme}
+        onShare={extraction ? onShare : undefined}
+        onSaveAsExample={extraction ? onSaveAsExample : undefined}
+      />
     </div>
   )
 }
