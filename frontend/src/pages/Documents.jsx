@@ -312,6 +312,14 @@ export default function Documents() {
   const [menuFor, setMenuFor] = useState(null)
   const initialLoadRef = useRef(true)
 
+  // M11 — multi-select. `selected` is a Set of extraction ids; the page
+  // header swaps to "N selected · Move · Delete · Clear" mode whenever
+  // size > 0. Row checkboxes show on hover when nothing is selected, and
+  // stay persistent while a selection is active so users can build it up.
+  const [selected, setSelected] = useState(() => new Set())
+  // M11 — bulk move-to-project menu visibility.
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false)
+
   // Run a fresh fetch with the current query. Used by Retry + the undo flow.
   const refresh = async (q = query) => {
     setError(null)
@@ -400,6 +408,67 @@ export default function Documents() {
     })
   }
 
+  // M11 — selection helpers + bulk actions.
+  const hasSelection = selected.size > 0
+  const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const clearSelection = () => setSelected(new Set())
+  const toggleSelectAll = () => {
+    if (allSelected) clearSelection()
+    else setSelected(new Set(filtered.map((r) => r.id)))
+  }
+
+  // Bulk delete — serial deletes so a single failure doesn't strand the
+  // batch; per-failure count surfaces in the final toast. No undo for
+  // bulk (we'd need to refetch each row's full payload first; explicit
+  // confirmation gates the cost of accidental clicks).
+  const bulkDelete = async () => {
+    if (selected.size === 0) return
+    const n = selected.size
+    if (!window.confirm(`Delete ${n} document${n === 1 ? '' : 's'}? This can't be undone.`)) return
+    const ids = Array.from(selected)
+    let ok = 0, failed = 0
+    for (const id of ids) {
+      try { await deleteExtraction(id); ok++ } catch { failed++ }
+    }
+    setRecords((rs) => rs.filter((r) => !selected.has(r.id)))
+    clearSelection()
+    await refreshProjects()
+    if (failed) toast.error(`Deleted ${ok}, ${failed} failed`)
+    else toast.success(`Deleted ${ok} document${ok === 1 ? '' : 's'}`)
+  }
+
+  // Bulk move — same serial pattern. `projectId === null` removes from
+  // any project; matches the single-row MoveMenu contract.
+  const bulkMove = async (projectId) => {
+    if (selected.size === 0) return
+    setBulkMoveOpen(false)
+    const ids = Array.from(selected)
+    let ok = 0, failed = 0
+    for (const id of ids) {
+      try {
+        await patchExtractionApi(id, { project_id: projectId || '' })
+        ok++
+      } catch { failed++ }
+    }
+    setRecords((rs) =>
+      rs.map((r) => (selected.has(r.id) ? { ...r, project_id: projectId || null } : r)),
+    )
+    clearSelection()
+    await refreshProjects()
+    const projName = projectId ? projectById[projectId]?.name : null
+    if (failed) toast.error(`Moved ${ok}, ${failed} failed`)
+    else if (projectId) toast.success(`Moved ${ok} to ${projName || 'project'}`)
+    else toast.success(`Removed ${ok} from project`)
+  }
+
   if (loading) {
     return (
       <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
@@ -439,29 +508,98 @@ export default function Documents() {
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h1
+      {/* Header — swaps to bulk-action mode when hasSelection (M11). */}
+      {hasSelection ? (
+        <div
           style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 24,
-            fontWeight: 600,
-            color: 'var(--text-strong)',
-            margin: 0,
-            letterSpacing: -0.3,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+            marginBottom: 'var(--space-4)',
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'var(--accent-soft)',
+            border: '1px solid var(--accent)',
+            borderRadius: 'var(--radius)',
+            position: 'relative',
           }}
         >
-          Documents
-        </h1>
-        <Badge tone="neutral">
-          {query ? `${records.length} match${records.length === 1 ? '' : 'es'}` : records.length}
-        </Badge>
-        {searching && <Spinner size={14} />}
-        <div style={{ flex: 1 }} />
-        <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => navigate('/')}>
-          New extraction
-        </Button>
-      </div>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={toggleSelectAll}
+            aria-label={allSelected ? 'Clear selection' : 'Select all'}
+            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--accent-ink)' }}>
+            {selected.size} selected
+          </span>
+          {!allSelected && filtered.length > selected.size && (
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--accent-strong)',
+                cursor: 'pointer',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 500,
+                padding: 0,
+              }}
+            >
+              Select all {filtered.length}
+            </button>
+          )}
+          <div style={{ flex: 1 }} />
+          <div style={{ position: 'relative' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<FolderClosed size={13} />}
+              onClick={() => setBulkMoveOpen((s) => !s)}
+            >
+              Move to project
+            </Button>
+            {bulkMoveOpen && (
+              <MoveMenu
+                projects={projects}
+                currentProjectId={null}
+                onPick={(pid) => bulkMove(pid)}
+                onClose={() => setBulkMoveOpen(false)}
+              />
+            )}
+          </div>
+          <Button variant="secondary" size="sm" icon={<Trash size={13} />} onClick={bulkDelete}>
+            Delete
+          </Button>
+          <Button variant="ghost" size="sm" onClick={clearSelection}>
+            Clear
+          </Button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-3xl)',
+              fontWeight: 600,
+              color: 'var(--text-strong)',
+              margin: 0,
+              letterSpacing: 'var(--tracking-tight)',
+            }}
+          >
+            Documents
+          </h1>
+          <Badge tone="neutral">
+            {query ? `${records.length} match${records.length === 1 ? '' : 'es'}` : records.length}
+          </Badge>
+          {searching && <Spinner size={14} />}
+          <div style={{ flex: 1 }} />
+          <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => navigate('/')}>
+            New extraction
+          </Button>
+        </div>
+      )}
 
       {/* Search */}
       <div
@@ -568,13 +706,20 @@ export default function Documents() {
           const actors = r.actor_count ?? 0
           const isLive = r.live
           const inProject = r.project_id ? projectById[r.project_id] : null
+          const isSelected = selected.has(r.id)
           return (
             <Card
               key={r.id}
               hover
               padding={14}
               className="doc-row"
-              onClick={() => onOpen(r)}
+              onClick={() => {
+                // M11 — when a selection is active, clicking the row toggles
+                // selection instead of opening (Linear-style); to actually
+                // open, the user clears the selection first.
+                if (hasSelection) toggleSelect(r.id)
+                else onOpen(r)
+              }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -582,9 +727,30 @@ export default function Documents() {
                 cursor: 'pointer',
                 position: 'relative',
                 animation: `fade-in .25s ease-out ${Math.min(i * 30, 300)}ms both`,
+                background: isSelected ? 'var(--accent-soft)' : undefined,
+                borderColor: isSelected ? 'var(--accent)' : undefined,
               }}
-              title={`Open ${r.filename}`}
+              title={hasSelection ? `Toggle selection · ${r.filename}` : `Open ${r.filename}`}
             >
+              {/* M11 — row checkbox. Visible on hover via .row-checkbox CSS;
+                  forced visible inline when a selection exists OR this row
+                  is selected so the user always sees it during a multi-pick. */}
+              <input
+                type="checkbox"
+                className="row-checkbox"
+                checked={isSelected}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleSelect(r.id)}
+                aria-label={`Select ${r.filename}`}
+                style={{
+                  width: 16,
+                  height: 16,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  accentColor: 'var(--accent)',
+                  opacity: hasSelection || isSelected ? 1 : undefined,
+                }}
+              />
               <IconTile tone={isLive ? 'success' : 'warn'} size={36}>
                 <FileText size={16} />
               </IconTile>

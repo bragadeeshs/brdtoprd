@@ -525,6 +525,20 @@ a:hover {
   opacity: 1;
 }
 
+/* M11 — row checkbox. Hidden by default, revealed on row hover OR
+ * forced visible inline (via opacity:1) when the page has any selection
+ * or this row is itself selected. */
+.doc-row .row-checkbox {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.doc-row:hover .row-checkbox,
+.doc-row .row-checkbox:focus-visible,
+.doc-row .row-checkbox:checked {
+  opacity: 1;
+}
+
 .row-delete:hover {
   color: var(--danger) !important;
   background: var(--danger-soft) !important;
