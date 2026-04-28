@@ -8,16 +8,18 @@ import {
   getMeLegacyApi,
   getMeUsageApi,
   getPortalApi,
+  listExtractionsApi,
 } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
-import { Badge, Button, Card, IconTile, Spinner, StatCard } from '../components/primitives.jsx'
+import { ActivityTimeline, Badge, Button, Card, IconTile, Spinner, StatCard } from '../components/primitives.jsx'
 import PageShell from '../components/PageShell.jsx'
 import {
   Activity,
   AlertTriangle,
   Check,
   Download,
+  FileText,
   RefreshCw,
   Settings as SettingsIcon,
   Sparkles,
@@ -501,6 +503,54 @@ function Section({ icon, tone, title, description, children }) {
   )
 }
 
+/* M12.5 — Recent activity timeline for the Account page. Pulls the
+ * last 10 extractions from the backend and renders them as an
+ * ActivityTimeline. Click → navigate to the doc via restoreExtraction
+ * (same path the Documents row uses). Soft-fails on error since this is
+ * a "nice to have" surface, not a blocker for the rest of the page. */
+function RecentActivitySection() {
+  const navigate = useNavigate()
+  const { restoreExtraction } = useApp()
+  const [rows, setRows] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    listExtractionsApi()
+      .then((all) => { if (alive) setRows((all || []).slice(0, 10)) })
+      .catch(() => { if (alive) setRows([]) })
+    return () => { alive = false }
+  }, [])
+
+  if (rows === null) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading activity…
+      </div>
+    )
+  }
+
+  const items = rows.map((r) => ({
+    id: r.id,
+    icon: <FileText size={13} />,
+    kind: r.live ? 'Live' : 'Mock',
+    kindTone: r.live ? 'success' : 'warn',
+    action: 'Extracted',
+    title: r.filename,
+    actor: r.brief_summary
+      ? r.brief_summary.length > 90 ? `${r.brief_summary.slice(0, 90)}…` : r.brief_summary
+      : `${r.story_count ?? 0} stories · ${r.gap_count ?? 0} gaps`,
+    timestamp: fmtRelTime(r.created_at),
+    onClick: () => { restoreExtraction(r); navigate('/') },
+  }))
+
+  return (
+    <ActivityTimeline
+      items={items}
+      emptyLabel="No extractions yet — your recent activity will land here."
+    />
+  )
+}
+
 /* M12.2 — top-of-page KPI strip. Four StatCards in a flex row giving an
  * at-a-glance read on usage + spend without scrolling into the Usage
  * section. Does its own getMeUsageApi fetch — UsageSection's existing
@@ -610,6 +660,17 @@ export default function Account() {
         description="Tokens billed, cost, and per-model breakdown — drawn from every Claude call you've made."
       >
         <UsageSection />
+      </Section>
+
+      {/* M12.5 — recent extractions timeline. Sits between Usage and
+          Plan because activity flows naturally after the spend summary. */}
+      <Section
+        icon={<Activity size={16} />}
+        tone="accent"
+        title="Recent activity"
+        description="Your most recent extractions. Click any row to open it in the studio."
+      >
+        <RecentActivitySection />
       </Section>
 
       <Section

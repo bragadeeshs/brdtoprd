@@ -265,6 +265,153 @@ export function IconTile({ children, tone = 'accent', size = 36, style }) {
 }
 
 /* =========================================================================
+   ActivityTimeline — vertical event log
+   =========================================================================
+ *
+ * M12.5 — pattern lifted from the reference dashboard. Each row is
+ * [circular icon] [badge + action] [actor name] … [relative time].
+ * Designed for "what's been happening" surfaces — recent extractions
+ * on the Account page now, future audit log / share-link views later.
+ *
+ *   <ActivityTimeline
+ *     items={[{
+ *       id, icon, kind: 'Extraction', kindTone: 'accent',
+ *       title, actor, timestamp, onClick,
+ *     }, …]}
+ *   />
+ *
+ * `onClick` per item makes the whole row clickable (open the
+ * extraction, etc.). Empty rows render an italic "no activity" line.
+ */
+export function ActivityTimeline({ items, emptyLabel = 'No recent activity.' }) {
+  if (!items?.length) {
+    return (
+      <div
+        style={{
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-soft)',
+          fontStyle: 'italic',
+          padding: '14px 0',
+        }}
+      >
+        {emptyLabel}
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {items.map((item, i) => {
+        const isLast = i === items.length - 1
+        const RowEl = item.onClick ? 'button' : 'div'
+        return (
+          <RowEl
+            key={item.id ?? i}
+            type={item.onClick ? 'button' : undefined}
+            onClick={item.onClick}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-3) 0',
+              borderBottom: isLast ? 'none' : '1px solid var(--border)',
+              background: 'transparent',
+              border: 'none',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              borderBottom: isLast ? 'none' : '1px solid var(--border)',
+              borderRadius: 0,
+              width: '100%',
+              cursor: item.onClick ? 'pointer' : 'default',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              color: 'inherit',
+              transition: 'background var(--dur-fast) var(--ease-out)',
+            }}
+            onMouseEnter={(e) => {
+              if (item.onClick) e.currentTarget.style.background = 'var(--bg-subtle)'
+            }}
+            onMouseLeave={(e) => {
+              if (item.onClick) e.currentTarget.style.background = 'transparent'
+            }}
+          >
+            {/* Icon disc — neutral circle around the per-item icon to
+                give the timeline a left "rail" rhythm. */}
+            <span
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                background: 'var(--bg-subtle)',
+                color: 'var(--text-muted)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginTop: 1,
+              }}
+            >
+              {item.icon}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                {item.kind && (
+                  <Badge tone={item.kindTone || 'accent'} size="sm">
+                    {item.kind}
+                  </Badge>
+                )}
+                {item.action && (
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-strong)' }}>
+                    {item.action}
+                  </span>
+                )}
+              </div>
+              {item.title && (
+                <div
+                  style={{
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text)',
+                    marginTop: 2,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {item.title}
+                </div>
+              )}
+              {item.actor && (
+                <div
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--text-muted)',
+                    marginTop: 2,
+                  }}
+                >
+                  {item.actor}
+                </div>
+              )}
+            </div>
+            {item.timestamp && (
+              <span
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--text-soft)',
+                  flexShrink: 0,
+                  marginTop: 4,
+                }}
+              >
+                {item.timestamp}
+              </span>
+            )}
+          </RowEl>
+        )
+      })}
+    </div>
+  )
+}
+
+/* =========================================================================
    FilterChipStrip — pill chips with embedded counts
    =========================================================================
  *
