@@ -1,4 +1,5 @@
 import React from 'react'
+import { IconTile } from './primitives.jsx'
 
 /* M10.7 — extracted from Settings.jsx to a shared component so Account,
  * Project, and any future top-level page can land on the same layout
@@ -22,7 +23,12 @@ import React from 'react'
  * forms with picker dropdowns, multi-column tables). Default is the
  * comfortable 720px reading column for most pages.
  */
-export default function PageShell({ title, description, eyebrow, children, wide = false }) {
+/* M12.4 — added optional `icon` (renders a 36px IconTile next to the
+ * title — visual anchor for the page) and `actions` (right-aligned slot
+ * in the title row for buttons, dropdowns, primary CTAs). Both props
+ * are optional and back-compat with M10.7 callers.
+ */
+export default function PageShell({ title, description, eyebrow, icon, actions, children, wide = false }) {
   const maxWidth = wide ? 960 : 720
   return (
     <div
@@ -79,19 +85,43 @@ export default function PageShell({ title, description, eyebrow, children, wide 
                 {eyebrow}
               </div>
             )}
-            <h1
+            {/* M12.4 — title row now supports an optional left icon
+                (visual anchor for the page) and a right-aligned actions
+                slot (primary CTA / dropdowns / refresh button). */}
+            <div
               style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-3xl)',
-                fontWeight: 600,
-                color: 'var(--text-strong)',
-                margin: 0,
-                lineHeight: 'var(--leading-tight)',
-                letterSpacing: 'var(--tracking-tight)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+                flexWrap: 'wrap',
               }}
             >
-              {title}
-            </h1>
+              {icon && (
+                <IconTile tone="accent" size={36}>
+                  {icon}
+                </IconTile>
+              )}
+              <h1
+                style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--text-3xl)',
+                  fontWeight: 600,
+                  color: 'var(--text-strong)',
+                  margin: 0,
+                  lineHeight: 'var(--leading-tight)',
+                  letterSpacing: 'var(--tracking-tight)',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {title}
+              </h1>
+              {actions && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+                  {actions}
+                </div>
+              )}
+            </div>
             {/* Thin gradient accent — quietly carries the brand. */}
             <div
               aria-hidden

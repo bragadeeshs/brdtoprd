@@ -2350,6 +2350,7 @@ export default function Settings() {
     <PageShell
       title="Settings"
       description="App preferences and your data. Models, Tools, Integrations, and Support each have their own page in the left nav."
+      icon={<Sun size={18} />}
     >
       <Section
         icon={<Sun size={16} />}
@@ -2401,6 +2402,7 @@ export function ModelsPage() {
     <PageShell
       title="Models"
       description="Bring your own Anthropic API key and pick which Claude model runs your extractions."
+      icon={<Sparkles size={18} />}
     >
       <Section
         icon={<Shield size={16} />}
@@ -2452,6 +2454,7 @@ export function ToolsPage() {
     <PageShell
       title="Tools"
       description="Power-user knobs that shape how Claude extracts and how external code can call StoryForge."
+      icon={<FileText size={18} />}
     >
       <Section
         icon={<FileText size={16} />}
@@ -2488,6 +2491,7 @@ export function IntegrationsPage() {
     <PageShell
       title="Integrations"
       description="Push extracted artifacts into the tools your team already uses."
+      icon={<Plug size={18} />}
       wide
     >
       <Section
@@ -2554,6 +2558,7 @@ export function SupportPage() {
     <PageShell
       title="Support"
       description="API reference + the fastest ways to get help."
+      icon={<HelpCircle size={18} />}
     >
       <Section
         icon={<HelpCircle size={16} />}

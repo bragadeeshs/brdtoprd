@@ -11,7 +11,7 @@ import {
 } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
-import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
+import { Badge, Button, Card, IconTile, Spinner, StatCard } from '../components/primitives.jsx'
 import PageShell from '../components/PageShell.jsx'
 import {
   Activity,
@@ -501,6 +501,76 @@ function Section({ icon, tone, title, description, children }) {
   )
 }
 
+/* M12.2 — top-of-page KPI strip. Four StatCards in a flex row giving an
+ * at-a-glance read on usage + spend without scrolling into the Usage
+ * section. Does its own getMeUsageApi fetch — UsageSection's existing
+ * fetch handles the by-model breakdown below; one extra GET here is
+ * cheap and keeps both surfaces independently loadable. */
+function KpiStrip() {
+  const [usage, setUsage] = useState(null)
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    let alive = true
+    getMeUsageApi()
+      .then((u) => { if (alive) setUsage(u) })
+      .catch(() => { if (alive) setError(true) })
+    return () => { alive = false }
+  }, [])
+
+  if (error) return null   // soft-fail: UsageSection below shows the same data + error UI
+  if (!usage) {
+    // Skeleton row while fetching — same height as a real StatCard so layout doesn't jump.
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              flex: 1, minWidth: 180, height: 110,
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--bg-subtle)',
+              animation: `fade-in .25s ease-out ${i * 40}ms both`,
+            }}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  const { this_month: tm, all_time: at } = usage
+  const totalTokens = (b) => (b.input_tokens || 0) + (b.output_tokens || 0)
+  const avgCost = tm.calls > 0 ? Math.round(tm.cost_cents / tm.calls) : 0
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+      <StatCard
+        label="Extractions this month"
+        value={fmtNum(tm.calls)}
+        sublabel={tm.calls === 0 ? 'no runs yet this month' : `${fmtNum(totalTokens(tm))} tokens`}
+        icon={<Zap size={16} />}
+      />
+      <StatCard
+        label="Cost this month"
+        value={fmtCents(tm.cost_cents)}
+        sublabel={tm.calls > 0 ? `≈ ${fmtCents(avgCost)}/call avg` : '—'}
+        icon={<Sparkles size={16} />}
+      />
+      <StatCard
+        label="Tokens this month"
+        value={fmtNum(totalTokens(tm))}
+        sublabel={`${fmtNum(tm.input_tokens || 0)} in · ${fmtNum(tm.output_tokens || 0)} out`}
+        icon={<Activity size={16} />}
+      />
+      <StatCard
+        label="All-time extractions"
+        value={fmtNum(at.calls)}
+        sublabel={`${fmtCents(at.cost_cents)} total spend`}
+        icon={<Check size={16} />}
+      />
+    </div>
+  )
+}
+
 export default function Account() {
   const { user, isLoaded } = useUser()
   const { refreshPlan } = useApp()
@@ -523,11 +593,16 @@ export default function Account() {
   // M10.7 — moved to PageShell. `wide` because the Profile section embeds
   // Clerk's UserProfile widget which is itself a wide multi-column surface
   // (~720px wants more room).
+  // M12.4 — icon prop renders a 36px IconTile next to the title for a
+  // visual anchor (matches the reference dashboard pattern).
+  // M12.2 — KpiStrip renders above the existing Section stack for an
+  // at-a-glance read on usage + spend.
   const description = isLoaded && user
     ? `Signed in as ${user.primaryEmailAddress?.emailAddress || user.username || user.id}.`
     : 'Loading account…'
   return (
-    <PageShell title="Account" description={description} wide>
+    <PageShell title="Account" description={description} icon={<User size={18} />} wide>
+      <KpiStrip />
       <Section
         icon={<Activity size={16} />}
         tone="accent"

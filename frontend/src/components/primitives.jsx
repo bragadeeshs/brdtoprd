@@ -265,6 +265,104 @@ export function IconTile({ children, tone = 'accent', size = 36, style }) {
 }
 
 /* =========================================================================
+   StatCard — KPI surface with bold value + uppercase label + corner icon
+   =========================================================================
+ *
+ * M12.2 — pattern lifted from the reference dashboard. Pastel-tinted
+ * background, label uppercase top, big bold value below, optional icon
+ * tucked into the top-right corner. Designed to drop into a 4-up grid
+ * on Account / future Dashboard pages.
+ *
+ *   <StatCard label="Extractions this month" value="42" icon={<Zap />} />
+ *
+ * `tone` picks the background tint (defaults to accent). `value` can be
+ * any node — usually a string or pre-formatted number; we render it big
+ * and bold. `sublabel` is a small secondary line under the value.
+ */
+const STATCARD_TONES = {
+  accent: { bg: 'var(--accent-soft)', ink: 'var(--accent-ink)', icon: 'var(--accent-strong)' },
+  success: { bg: 'var(--success-soft)', ink: 'var(--success-ink)', icon: 'var(--success-ink)' },
+  warn: { bg: 'var(--warn-soft)', ink: 'var(--warn-ink)', icon: 'var(--warn-ink)' },
+  neutral: { bg: 'var(--bg-subtle)', ink: 'var(--text-strong)', icon: 'var(--text-muted)' },
+}
+
+export function StatCard({ label, value, sublabel, icon, tone = 'accent', style }) {
+  const t = STATCARD_TONES[tone] ?? STATCARD_TONES.accent
+  return (
+    <div
+      style={{
+        position: 'relative',
+        flex: 1,
+        minWidth: 180,
+        padding: 'var(--space-5)',
+        borderRadius: 'var(--radius-md)',
+        background: t.bg,
+        border: '1px solid transparent',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-2)',
+        ...style,
+      }}
+    >
+      {icon && (
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            top: 'var(--space-4)',
+            right: 'var(--space-4)',
+            color: t.icon,
+            opacity: 0.55,
+            display: 'inline-flex',
+          }}
+        >
+          {icon}
+        </span>
+      )}
+      <div
+        style={{
+          fontSize: 'var(--text-xs)',
+          fontWeight: 600,
+          letterSpacing: 'var(--tracking-wide)',
+          textTransform: 'uppercase',
+          color: t.ink,
+          opacity: 0.75,
+          // Padding so a long label doesn't run into the corner icon.
+          paddingRight: icon ? 26 : 0,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'var(--text-3xl)',
+          fontWeight: 700,
+          color: 'var(--text-strong)',
+          lineHeight: 'var(--leading-tight)',
+          letterSpacing: 'var(--tracking-tight)',
+          // Allow a long formatted value to wrap rather than overflow the card.
+          wordBreak: 'break-word',
+        }}
+      >
+        {value}
+      </div>
+      {sublabel && (
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-muted)',
+            lineHeight: 'var(--leading-base)',
+          }}
+        >
+          {sublabel}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* =========================================================================
    Spinner
    ========================================================================= */
 export function Spinner({ size = 16, color = 'var(--accent-strong)', strokeWidth = 2 }) {
