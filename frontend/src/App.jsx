@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
 import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
@@ -8,27 +8,31 @@ import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import ShareModal from './components/ShareModal.jsx'
-import PushToJiraModal from './components/PushToJiraModal.jsx'
-import PushToLinearModal from './components/PushToLinearModal.jsx'
-import PushToGitHubModal from './components/PushToGitHubModal.jsx'
-import PushToSlackModal from './components/PushToSlackModal.jsx'
-import PushToNotionModal from './components/PushToNotionModal.jsx'
-import SaveExampleModal from './components/SaveExampleModal.jsx'
 import { setSentryUser } from './lib/sentry.js'
 import { identifyUser, track } from './lib/analytics.js'
-import Account from './pages/Account.jsx'
-import Documents from './pages/Documents.jsx'
-import Project from './pages/Project.jsx'
-import Settings, {
-  ModelsPage,
-  ToolsPage,
-  IntegrationsPage,
-  SupportPage,
-} from './pages/Settings.jsx'
-import ShareView from './pages/ShareView.jsx'
-import CompareView from './pages/CompareView.jsx'
-import SignInPage from './pages/SignInPage.jsx'
-import SignUpPage from './pages/SignUpPage.jsx'
+
+// Bundle code-split — heavy routes/modals lazy-loaded so the initial
+// chunk only carries the studio (the always-mounted home page).
+// Settings exports four named pages from the same module; they all
+// share one chunk because they're in the same file.
+const Account = lazy(() => import('./pages/Account.jsx'))
+const Documents = lazy(() => import('./pages/Documents.jsx'))
+const Project = lazy(() => import('./pages/Project.jsx'))
+const Settings = lazy(() => import('./pages/Settings.jsx'))
+const ModelsPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.ModelsPage })))
+const ToolsPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.ToolsPage })))
+const IntegrationsPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.IntegrationsPage })))
+const SupportPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.SupportPage })))
+const ShareView = lazy(() => import('./pages/ShareView.jsx'))
+const CompareView = lazy(() => import('./pages/CompareView.jsx'))
+const SignInPage = lazy(() => import('./pages/SignInPage.jsx'))
+const SignUpPage = lazy(() => import('./pages/SignUpPage.jsx'))
+const PushToJiraModal = lazy(() => import('./components/PushToJiraModal.jsx'))
+const PushToLinearModal = lazy(() => import('./components/PushToLinearModal.jsx'))
+const PushToGitHubModal = lazy(() => import('./components/PushToGitHubModal.jsx'))
+const PushToSlackModal = lazy(() => import('./components/PushToSlackModal.jsx'))
+const PushToNotionModal = lazy(() => import('./components/PushToNotionModal.jsx'))
+const SaveExampleModal = lazy(() => import('./components/SaveExampleModal.jsx'))
 import PaywallModal from './components/PaywallModal.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
@@ -789,6 +793,7 @@ function AuthedApp() {
           onSaveAsExample={extractionId ? () => setSaveExampleOpen(true) : undefined}
           currentVersion={versions.find((v) => v.id === extractionId)?.version}
         />
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route
             path="/"
@@ -908,6 +913,7 @@ function AuthedApp() {
           <Route path="/support" element={<SupportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </main>
       {/* M8.6 — side GapsRail only renders at wide viewports. At narrow
           widths the 'gaps' tab inside .body shows the same component
@@ -930,28 +936,33 @@ function AuthedApp() {
       {shareOpen && extractionId && (
         <ShareModal extractionId={extractionId} onClose={() => setShareOpen(false)} />
       )}
-      {pushJiraOpen && extraction && (
-        <PushToJiraModal extraction={extraction} onClose={() => setPushJiraOpen(false)} />
-      )}
-      {pushLinearOpen && extraction && (
-        <PushToLinearModal extraction={extraction} onClose={() => setPushLinearOpen(false)} />
-      )}
-      {pushGitHubOpen && extraction && (
-        <PushToGitHubModal extraction={extraction} onClose={() => setPushGitHubOpen(false)} />
-      )}
-      {pushSlackOpen && extraction && (
-        <PushToSlackModal extraction={extraction} onClose={() => setPushSlackOpen(false)} />
-      )}
-      {pushNotionOpen && extraction && (
-        <PushToNotionModal extraction={extraction} onClose={() => setPushNotionOpen(false)} />
-      )}
-      {saveExampleOpen && extractionId && (
-        <SaveExampleModal
-          extractionId={extractionId}
-          defaultName={extraction?.filename || ''}
-          onClose={() => setSaveExampleOpen(false)}
-        />
-      )}
+      {/* Lazy-loaded modals — Suspense fallback is null because the
+          parent click feedback (button press) covers the brief async gap
+          while the chunk fetches. */}
+      <Suspense fallback={null}>
+        {pushJiraOpen && extraction && (
+          <PushToJiraModal extraction={extraction} onClose={() => setPushJiraOpen(false)} />
+        )}
+        {pushLinearOpen && extraction && (
+          <PushToLinearModal extraction={extraction} onClose={() => setPushLinearOpen(false)} />
+        )}
+        {pushGitHubOpen && extraction && (
+          <PushToGitHubModal extraction={extraction} onClose={() => setPushGitHubOpen(false)} />
+        )}
+        {pushSlackOpen && extraction && (
+          <PushToSlackModal extraction={extraction} onClose={() => setPushSlackOpen(false)} />
+        )}
+        {pushNotionOpen && extraction && (
+          <PushToNotionModal extraction={extraction} onClose={() => setPushNotionOpen(false)} />
+        )}
+        {saveExampleOpen && extractionId && (
+          <SaveExampleModal
+            extractionId={extractionId}
+            defaultName={extraction?.filename || ''}
+            onClose={() => setSaveExampleOpen(false)}
+          />
+        )}
+      </Suspense>
     </div>
     </AppProvider>
   )
@@ -966,25 +977,38 @@ function AuthedApp() {
  */
 export default function App() {
   return (
-    <Routes>
-      <Route path="/sign-in/*" element={<SignInPage />} />
-      <Route path="/sign-up/*" element={<SignUpPage />} />
-      {/* M4.6 — public share view; outside the SignedIn gate so visitors
-          without a Clerk account can read shared documents by URL. */}
-      <Route path="/share/:token" element={<ShareView />} />
-      <Route
-        path="*"
-        element={
-          <>
-            <SignedIn>
-              <AuthedApp />
-            </SignedIn>
-            <SignedOut>
-              <Navigate to="/sign-in" replace />
-            </SignedOut>
-          </>
-        }
-      />
-    </Routes>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/sign-in/*" element={<SignInPage />} />
+        <Route path="/sign-up/*" element={<SignUpPage />} />
+        {/* M4.6 — public share view; outside the SignedIn gate so visitors
+            without a Clerk account can read shared documents by URL. */}
+        <Route path="/share/:token" element={<ShareView />} />
+        <Route
+          path="*"
+          element={
+            <>
+              <SignedIn>
+                <AuthedApp />
+              </SignedIn>
+              <SignedOut>
+                <Navigate to="/sign-in" replace />
+              </SignedOut>
+            </>
+          }
+        />
+      </Routes>
+    </Suspense>
+  )
+}
+
+// Centred Spinner used as the Suspense fallback while a route chunk
+// is in flight. Matches the LoadingState layout (full-flex column)
+// so the page doesn't collapse to zero height during the swap.
+function RouteFallback() {
+  return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
+      <Spinner />
+    </div>
   )
 }
