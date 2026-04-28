@@ -9,7 +9,7 @@ import {
 } from '../lib/store.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
-import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
+import { Badge, Button, Card, FilterChipStrip, IconTile, Spinner } from '../components/primitives.jsx'
 import {
   AlertTriangle,
   Check,
@@ -322,6 +322,9 @@ export default function Documents() {
   // M11.b — anchor for shift-click range select. Updated on every plain
   // checkbox click; shift+click extends from anchor to the new id.
   const lastClickedIdRef = useRef(null)
+  // M12.3 — view filter applied client-side over the search-filtered list.
+  // 'all' is the default; switching does not refetch (cheap + responsive).
+  const [viewFilter, setViewFilter] = useState('all')
 
   // Run a fresh fetch with the current query. Used by Retry + the undo flow.
   const refresh = async (q = query) => {
@@ -348,8 +351,27 @@ export default function Documents() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
 
-  // After backend filtering, `records` IS the displayed list — no client filter.
-  const filtered = records
+  // After backend search-filtering, `records` is the candidate list.
+  // M12.3 — additional client-side view filter on top: All / Live / Mock /
+  // This week. Counts shown in the chip strip use `records` (post-search,
+  // pre-view-filter) so the chips reflect "of what your search matches".
+  const oneWeekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const filterFns = {
+    all: () => true,
+    live: (r) => !!r.live,
+    mock: (r) => !r.live,
+    week: (r) => {
+      const t = r.created_at ? new Date(r.created_at).getTime() : 0
+      return t > oneWeekAgoMs
+    },
+  }
+  const filtered = records.filter(filterFns[viewFilter] || filterFns.all)
+  const filterOptions = [
+    { id: 'all',  label: 'All',       count: records.length },
+    { id: 'live', label: 'Live',      count: records.filter(filterFns.live).length },
+    { id: 'mock', label: 'Mock',      count: records.filter(filterFns.mock).length },
+    { id: 'week', label: 'This week', count: records.filter(filterFns.week).length },
+  ]
 
   const onOpen = (record) => {
     // App handles the async hydration AND the navigate to '/'.
@@ -693,6 +715,19 @@ export default function Documents() {
         )}
       </div>
 
+      {/* M12.3 — view filter chips. Sit between the search bar and the
+          list so users see filter options + counts at a glance. Hidden
+          when no records (the empty hero handles that case). */}
+      {records.length > 0 && (
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <FilterChipStrip
+            options={filterOptions}
+            active={viewFilter}
+            onChange={setViewFilter}
+          />
+        </div>
+      )}
+
       {/* List or empty-search state */}
       {filtered.length === 0 && (
         <div
@@ -706,24 +741,51 @@ export default function Documents() {
             background: 'var(--bg-subtle)',
           }}
         >
-          No documents match <strong style={{ color: 'var(--text-strong)' }}>"{query}"</strong>.
-          <br />
-          <button
-            type="button"
-            onClick={() => setQuery('')}
-            style={{
-              marginTop: 10,
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--accent-strong)',
-              cursor: 'pointer',
-              fontSize: 12.5,
-              fontWeight: 500,
-              padding: 0,
-            }}
-          >
-            Clear search
-          </button>
+          {/* M12.3 — distinguish empty-by-search vs empty-by-view-filter so
+              the call-to-action targets the actual cause. */}
+          {query && viewFilter === 'all' ? (
+            <>
+              No documents match <strong style={{ color: 'var(--text-strong)' }}>"{query}"</strong>.
+              <br />
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                style={{
+                  marginTop: 10,
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-strong)',
+                  cursor: 'pointer',
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  padding: 0,
+                }}
+              >
+                Clear search
+              </button>
+            </>
+          ) : (
+            <>
+              No documents in this view.
+              <br />
+              <button
+                type="button"
+                onClick={() => { setQuery(''); setViewFilter('all') }}
+                style={{
+                  marginTop: 10,
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent-strong)',
+                  cursor: 'pointer',
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  padding: 0,
+                }}
+              >
+                Clear filters
+              </button>
+            </>
+          )}
         </div>
       )}
 

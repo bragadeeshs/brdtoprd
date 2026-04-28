@@ -265,6 +265,89 @@ export function IconTile({ children, tone = 'accent', size = 36, style }) {
 }
 
 /* =========================================================================
+   FilterChipStrip — pill chips with embedded counts
+   =========================================================================
+ *
+ * M12.3 — pattern lifted from the reference dashboard ("All 40 ·
+ * Attendance 10 · Exception 1 …"). Clickable pills with the count baked
+ * into each chip; active chip fills with the accent color. Use for
+ * filtering inside one view (Documents has-comments / live / mock).
+ *
+ *   <FilterChipStrip
+ *     options={[{ id: 'all', label: 'All', count: 40 }, …]}
+ *     active="all"
+ *     onChange={setFilter}
+ *   />
+ */
+export function FilterChipStrip({ options, active, onChange, style }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Filter"
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 'var(--space-2)',
+        ...style,
+      }}
+    >
+      {options.map((opt) => {
+        const isActive = active === opt.id
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange?.(opt.id)}
+            className="btn-press"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 12px',
+              border: 'none',
+              borderRadius: 'var(--radius-pill)',
+              fontSize: 'var(--text-sm)',
+              fontWeight: isActive ? 600 : 500,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              background: isActive ? 'var(--accent)' : 'var(--accent-soft)',
+              color: isActive ? '#fff' : 'var(--accent-ink)',
+              transition:
+                'background var(--dur-fast) var(--ease-out),' +
+                ' color var(--dur-fast) var(--ease-out)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive) e.currentTarget.style.background = 'var(--accent)'
+              if (!isActive) e.currentTarget.style.color = '#fff'
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive) e.currentTarget.style.background = 'var(--accent-soft)'
+              if (!isActive) e.currentTarget.style.color = 'var(--accent-ink)'
+            }}
+          >
+            {opt.label}
+            {opt.count != null && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 600,
+                  opacity: 0.85,
+                }}
+              >
+                {opt.count}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/* =========================================================================
    StatCard — KPI surface with bold value + uppercase label + corner icon
    =========================================================================
  *
