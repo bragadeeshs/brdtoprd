@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { downloadExtractionDocxApi } from '../api.js'
 import { track } from '../lib/analytics.js'
 import { buildCsv, buildJson, buildMarkdown, downloadFile, exportBaseName } from '../lib/exports.js'
@@ -369,7 +370,21 @@ export default function TopBar({
         </>
       ) : (
         <>
-          <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Home</span>
+          <Link
+            to="/"
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: 13,
+              textDecoration: 'none',
+              padding: '2px 6px',
+              margin: '-2px -6px',
+              borderRadius: 4,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-strong)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            Home
+          </Link>
           <ChevronRight size={14} style={{ color: 'var(--text-soft)' }} />
           <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
             New extraction

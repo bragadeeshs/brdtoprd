@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { OrganizationSwitcher, useClerk, useUser } from '@clerk/clerk-react'
 import { useApp } from '../lib/AppContext.jsx'
 import { createProjectApi } from '../api.js'
@@ -199,6 +199,7 @@ function ProjectsSection() {
 }
 
 export default function Sidebar({ onNew, extractionContext }) {
+  const navigate = useNavigate()
   return (
     <aside
       style={{
@@ -210,7 +211,9 @@ export default function Sidebar({ onNew, extractionContext }) {
         flexShrink: 0,
       }}
     >
-      {/* Brand row */}
+      {/* Brand row — Logo + name link to / (Home), so clicking the brand
+          returns to the studio from anywhere. Search icon navigates to
+          /documents with a query param that focuses the search input. */}
       <div
         style={{
           padding: '14px 14px 10px',
@@ -219,19 +222,39 @@ export default function Sidebar({ onNew, extractionContext }) {
           gap: 10,
         }}
       >
-        <Logo size={28} />
-        <span
+        <Link
+          to="/"
+          aria-label="Home"
+          title="Home"
           style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 17,
-            fontWeight: 600,
-            color: 'var(--text-strong)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
             flex: 1,
+            textDecoration: 'none',
+            color: 'inherit',
+            borderRadius: 6,
+            padding: '2px 4px',
+            margin: '-2px -4px',
           }}
         >
-          StoryForge
-        </span>
-        <IconButton label="Search · coming soon" size={28} disabled aria-disabled="true" style={{ cursor: 'not-allowed', opacity: 0.45 }}>
+          <Logo size={28} />
+          <span
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 17,
+              fontWeight: 600,
+              color: 'var(--text-strong)',
+            }}
+          >
+            StoryForge
+          </span>
+        </Link>
+        <IconButton
+          label="Search documents"
+          size={28}
+          onClick={() => navigate('/documents?focus=search')}
+        >
           <Search size={15} />
         </IconButton>
         <IconButton label="New extraction" size={28} onClick={onNew}>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { patchExtractionApi } from '../api.js'
 import {
   deleteExtraction,
@@ -302,6 +302,7 @@ function MoveMenu({ projects, currentProjectId, onPick, onClose }) {
 
 export default function Documents() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { restoreExtraction, projects, projectById, refreshProjects } = useApp()
   const { toast } = useToast()
   const [records, setRecords] = useState([])
@@ -311,6 +312,17 @@ export default function Documents() {
   const [query, setQuery] = useState('')
   const [menuFor, setMenuFor] = useState(null)
   const initialLoadRef = useRef(true)
+  // Auto-focus search input when arriving via /documents?focus=search
+  // (Sidebar Search icon click). Strip the param after focusing so a
+  // page reload doesn't re-focus and steal cursor from elsewhere.
+  const searchInputRef = useRef(null)
+  useEffect(() => {
+    if (searchParams.get('focus') === 'search') {
+      searchInputRef.current?.focus()
+      searchParams.delete('focus')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // M11 — multi-select. `selected` is a Set of extraction ids; the page
   // header swaps to "N selected · Move · Delete · Clear" mode whenever
@@ -676,6 +688,7 @@ export default function Documents() {
       >
         <Search size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
         <input
+          ref={searchInputRef}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
