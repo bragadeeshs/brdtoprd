@@ -11,22 +11,6 @@ import {
   CheckCircle,
 } from './icons.jsx'
 
-function HowItWorksStep({ icon, tone, title, body }) {
-  return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <IconTile tone={tone} size={32}>
-        {icon}
-      </IconTile>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 2 }}>
-          {title}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{body}</div>
-      </div>
-    </div>
-  )
-}
-
 export default function EmptyState({ onSubmit, loading }) {
   const fileRef = useRef(null)
   const [text, setText] = useState('')
@@ -69,12 +53,13 @@ export default function EmptyState({ onSubmit, loading }) {
 
   return (
     <div
+      className="empty-state-page"
       style={{
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: 'var(--space-10) var(--space-5) var(--space-8)',
+        padding: 'var(--space-6) var(--space-5) var(--space-6)',
         overflow: 'auto',
         position: 'relative',
         background: 'var(--surface-0)',
@@ -94,40 +79,42 @@ export default function EmptyState({ onSubmit, loading }) {
           zIndex: 0,
         }}
       />
-      {/* Hero */}
-      <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 720, marginBottom: 'var(--space-8)' }}>
-        <Badge tone="accent" icon={<Sparkles size={11} />} style={{ marginBottom: 'var(--space-5)' }}>
-          Powered by Claude Opus 4.7
-        </Badge>
-        <h1
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'var(--text-5xl)',
-            lineHeight: 'var(--leading-tight)',
-            fontWeight: 600,
-            margin: '0 0 var(--space-4)',
-            letterSpacing: 'var(--tracking-tighter)',
-            color: 'var(--text-strong)',
-          }}
-        >
-          What are we turning <span className="gradient-text">into stories</span> today?
-        </h1>
-        <p style={{
-          fontSize: 'var(--text-lg)',
-          color: 'var(--text-muted)',
-          margin: 0,
-          lineHeight: 'var(--leading-base)',
-          maxWidth: 580,
-          marginLeft: 'auto',
-          marginRight: 'auto',
-        }}>
-          Drop a messy requirement document — get a clean brief, actors, user stories with acceptance
-          criteria, NFRs and gap analysis in one pass.
-        </p>
-      </div>
 
-      {/* Upload card */}
-      <form onSubmit={submit} style={{ width: '100%', maxWidth: 720 }}>
+      {/* M13.5 — two-column at >= 980px so hero + form fit in one
+          viewport without scrolling. Stacks on narrow viewports.
+          Layout in styles.css `.empty-state-grid`. */}
+      <div className="empty-state-grid" style={{ position: 'relative', zIndex: 1 }}>
+        {/* Hero */}
+        <div className="empty-state-hero">
+          <Badge tone="accent" icon={<Sparkles size={11} />} style={{ marginBottom: 'var(--space-4)' }}>
+            Powered by Claude Opus 4.7
+          </Badge>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-4xl)',
+              lineHeight: 'var(--leading-tight)',
+              fontWeight: 600,
+              margin: '0 0 var(--space-3)',
+              letterSpacing: 'var(--tracking-tighter)',
+              color: 'var(--text-strong)',
+            }}
+          >
+            Turn requirements <span className="gradient-text">into stories</span>.
+          </h1>
+          <p style={{
+            fontSize: 'var(--text-base)',
+            color: 'var(--text-muted)',
+            margin: 0,
+            lineHeight: 'var(--leading-base)',
+          }}>
+            Drop a messy requirement document — get a clean brief, actors, user stories with acceptance
+            criteria, NFRs and gap analysis in one pass.
+          </p>
+        </div>
+
+        {/* Upload card */}
+        <form onSubmit={submit} className="empty-state-form">
         <Card
           padding={0}
           style={{
@@ -344,36 +331,15 @@ export default function EmptyState({ onSubmit, loading }) {
           </div>
         </Card>
       </form>
+      </div>{/* /.empty-state-grid */}
 
-      {/* How it works */}
-      <div
-        style={{
-          marginTop: 48,
-          width: '100%',
-          maxWidth: 720,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 24,
-        }}
-      >
-        <HowItWorksStep
-          icon={<Zap size={16} />}
-          tone="accent"
-          title="One-shot extraction"
-          body="Drop a doc. Get a structured brief, actors, user stories with acceptance criteria, NFRs and gaps."
-        />
-        <HowItWorksStep
-          icon={<Eye size={16} />}
-          tone="accent"
-          title="Source-grounded"
-          body="Every extraction stays faithful to the source. Highlights show where each gap came from."
-        />
-        <HowItWorksStep
-          icon={<CheckCircle size={16} />}
-          tone="success"
-          title="Export ready"
-          body="Copy as Markdown for Linear, Jira or your PRD tool — or hand a polished brief to stakeholders."
-        />
+      {/* M13.5 — How-it-works compressed from 3 cards (~140px tall) to
+          a single inline pill row (~32px tall) below the hero/card grid.
+          Same three guarantees, ~1/4 the vertical footprint. */}
+      <div className="empty-state-strip" style={{ position: 'relative', zIndex: 1 }}>
+        <span><Zap size={13} /> One-shot extraction</span>
+        <span><Eye size={13} /> Source-grounded</span>
+        <span><CheckCircle size={13} /> Export ready</span>
       </div>
     </div>
   )
