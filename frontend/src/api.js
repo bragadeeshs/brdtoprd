@@ -921,7 +921,7 @@ export async function downloadMeExport() {
   // Honor server-supplied filename if present.
   const cd = res.headers.get('content-disposition') || ''
   const match = cd.match(/filename="([^"]+)"/)
-  const filename = match ? match[1] : 'storyforge-export.zip'
+  const filename = match ? match[1] : 'lucid-export.zip'
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

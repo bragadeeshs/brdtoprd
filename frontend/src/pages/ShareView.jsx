@@ -70,7 +70,7 @@ export default function ShareView() {
             {ext.filename}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-soft)' }}>
-            Shared read-only · StoryForge
+            Shared read-only · Lucid
           </div>
         </div>
         <Link
@@ -82,7 +82,7 @@ export default function ShareView() {
             fontWeight: 500,
           }}
         >
-          Sign in to StoryForge →
+          Sign in to Lucid →
         </Link>
       </header>
 
@@ -126,7 +126,7 @@ function CenteredCard({ message, tone, showHomeLink }) {
               fontWeight: 500,
             }}
           >
-            Go to StoryForge home →
+            Go to Lucid home →
           </Link>
         )}
       </Card>

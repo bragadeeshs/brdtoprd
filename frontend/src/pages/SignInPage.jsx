@@ -6,7 +6,7 @@ import { SignIn } from '@clerk/clerk-react'
  * M13.2 — bulb-and-cord SignInPage.
  *
  * Page boots dim (lights off): a bulb hangs from a long cord, surrounded
- * by an explainer about what StoryForge does. Clicking the cord (or
+ * by an explainer about what Lucid does. Clicking the cord (or
  * focusing it + pressing Space/Enter) "pulls" it — the cord briefly
  * stretches, the bulb glows warm, the page background lifts to a
  * lit-room cream, and the Clerk SignIn widget fades up below the bulb.
@@ -70,7 +70,7 @@ export default function SignInPage() {
                 margin: 0,
               }}
             >
-              StoryForge
+              Lucid
             </h1>
             <p
               style={{
@@ -80,10 +80,10 @@ export default function SignInPage() {
                 marginBottom: 0,
               }}
             >
-              Drop a BRD, transcript, or messy doc — Claude pulls out user
-              stories, acceptance criteria, NFRs, and the gaps you'd otherwise
-              miss. Every artifact links back to the source quote, and one
-              click pushes them to Jira, Linear, or Notion.
+              Drop in any document — BRD, contract, research paper, transcript.
+              Lucid reads it like an expert analyst: structure, hidden
+              assumptions, root causes, the questions you should be asking,
+              and the actions to take next. Every insight sourced.
             </p>
             <span className="bulb-pull-hint" aria-hidden>
               <span style={{ fontSize: 18, lineHeight: 1 }}>↑</span> Pull the cord — sign-in appears on the right

@@ -3,7 +3,7 @@ import { SignUp } from '@clerk/clerk-react'
 import { Logo } from '../components/icons.jsx'
 
 /** M10.2 — same hero treatment as SignInPage so the entry pages feel
- *  paired and unmistakably StoryForge. */
+ *  paired and unmistakably Lucid. */
 export default function SignUpPage() {
   return (
     <div
@@ -39,7 +39,7 @@ export default function SignUpPage() {
               letterSpacing: 'var(--tracking-tight)',
             }}
           >
-            StoryForge
+            Lucid
           </span>
         </div>
         <SignUp routing="path" path="/sign-up" signInUrl="/sign-in" />

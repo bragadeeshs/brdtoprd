@@ -381,7 +381,7 @@ function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-muted)' }}>
         <span style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--success)' }} />
         <span>
-          Managed mode — extractions use the StoryForge-hosted Anthropic key.
+          Managed mode — extractions use the Lucid-hosted Anthropic key.
           You don't need to bring your own.
         </span>
       </div>
@@ -2476,7 +2476,7 @@ export function ToolsPage() {
   return (
     <PageShell
       title="Tools"
-      description="Power-user knobs that shape how Claude extracts and how external code can call StoryForge."
+      description="Power-user knobs that shape how Claude extracts and how external code can call Lucid."
       icon={<FileText size={18} />}
     >
       <Section
@@ -2611,7 +2611,7 @@ export function SupportPage() {
             </span>
           </a>
           <a
-            href="mailto:bragadeeshs@gmail.com?subject=StoryForge%20feedback"
+            href="mailto:bragadeeshs@gmail.com?subject=Lucid%20feedback"
             style={linkRowStyle}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-elevated)')}

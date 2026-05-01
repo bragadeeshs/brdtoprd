@@ -238,7 +238,7 @@ export default function PushToNotionModal({ extraction, onClose }) {
             <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 14px', lineHeight: 1.55 }}>
               In Notion, open the database you want to push to → click the
               <strong> "..." </strong> menu → <strong>Add connections</strong> →
-              pick your StoryForge integration.{' '}
+              pick your Lucid integration.{' '}
               <a
                 href="https://www.notion.so/help/add-and-manage-connections-with-the-api"
                 target="_blank"

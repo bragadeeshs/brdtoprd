@@ -131,7 +131,7 @@ function Hero() {
             maxWidth: 900,
           }}
         >
-          Turn messy docs into shippable stories.
+          Understand any document.
         </h1>
 
         <p
@@ -143,9 +143,10 @@ function Hero() {
             marginTop: 24,
           }}
         >
-          BRDs, transcripts, meeting notes — drop one in and Claude pulls out
-          actors, user stories, acceptance criteria, NFRs, and the gaps you'd
-          otherwise miss. Every artifact links back to the source quote.
+          Drop in a BRD, contract, research paper, transcript — anything. Lucid
+          reads it like an expert analyst would: structure, hidden assumptions,
+          root causes, the questions you should be asking, and the actions to
+          take next. Every insight links back to the exact source quote.
         </p>
 
         <div style={{ display: 'flex', gap: 12, marginTop: 36, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -188,7 +189,7 @@ function Nav() {
         >
           <Sparkles size={15} />
         </span>
-        <span style={{ fontFamily: 'Fraunces, Georgia, serif', letterSpacing: '-0.01em' }}>StoryForge</span>
+        <span style={{ fontFamily: 'Fraunces, Georgia, serif', letterSpacing: '-0.01em' }}>Lucid</span>
       </div>
       <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <a href="#pricing" style={navLinkStyle}>Pricing</a>
@@ -432,8 +433,8 @@ function HowItWorks() {
     },
     {
       icon: <Sparkles size={22} />,
-      title: 'Watch Claude extract',
-      body: 'Streaming user stories, acceptance criteria, NFRs, and gaps as the model reads. Edit inline, regenerate any section.',
+      title: 'Watch Lucid read it',
+      body: 'A narrated dossier streams in: brief, 5W1H, mindmap, root causes, hidden assumptions, better questions, action items. Every claim sourced.',
     },
     {
       icon: <Plug size={22} />,
@@ -521,7 +522,7 @@ function Testimonials() {
   const quotes = [
     {
       quote:
-        'A 20-page BRD used to take a junior PM half a week to break down. StoryForge does it in two minutes and the gaps it surfaces are exactly the questions I would have asked.',
+        'A 20-page BRD used to take a junior PM half a week to break down. Lucid does it in two minutes and the gaps it surfaces are exactly the questions I would have asked.',
       name: 'Senior PM',
       role: 'B2B SaaS, ~200 employees',
     },
@@ -781,7 +782,7 @@ function FAQ() {
     },
     {
       q: 'How does pushing to Jira / Linear / Notion work?',
-      a: 'OAuth or API-token, your call. One click in the studio creates issues with the story title, acceptance criteria as checklist items, and a back-link to the StoryForge extraction. Field mapping (Notion properties, Jira custom fields) is configurable per integration.',
+      a: 'OAuth or API-token, your call. One click in the studio creates issues with the story title, acceptance criteria as checklist items, and a back-link to the Lucid extraction. Field mapping (Notion properties, Jira custom fields) is configurable per integration.',
     },
     {
       q: 'Can I cancel anytime?',
@@ -859,7 +860,7 @@ function FooterCTA() {
       </p>
       <CtaPrimary to="/sign-up">Get started <ArrowRight size={16} /></CtaPrimary>
       <div style={{ marginTop: 64, fontSize: 12.5, color: 'var(--lp-text-fainter)' }}>
-        © StoryForge ·{' '}
+        © Lucid ·{' '}
         <Link to="/sign-in" style={{ color: 'var(--lp-text-faint)', textDecoration: 'none' }}>Sign in</Link>{' '}
         · <a href="#pricing" style={{ color: 'var(--lp-text-faint)', textDecoration: 'none' }}>Pricing</a>{' '}
         · <a href="#faq" style={{ color: 'var(--lp-text-faint)', textDecoration: 'none' }}>FAQ</a>

@@ -42,8 +42,8 @@ test('/share/<unknown-token> shows the not-found state', async ({ page }) => {
   // crashing and shows recognizable content".
   const root = page.locator('body')
   await expect(root).not.toBeEmpty()
-  // The page should expose the "StoryForge home" link in either error
+  // The page should expose the "Lucid home" link in either error
   // state (ShareView's CenteredCard always includes it on error).
   // Use a 5s timeout so a slow first paint doesn't flake the test.
-  await expect(page.getByText(/StoryForge|Sign in|home/i).first()).toBeVisible({ timeout: 5_000 })
+  await expect(page.getByText(/Lucid|Sign in|home/i).first()).toBeVisible({ timeout: 5_000 })
 })

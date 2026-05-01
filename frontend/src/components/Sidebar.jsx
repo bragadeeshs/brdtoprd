@@ -247,7 +247,7 @@ export default function Sidebar({ onNew, extractionContext }) {
               color: 'var(--text-strong)',
             }}
           >
-            StoryForge
+            Lucid
           </span>
         </Link>
         <IconButton

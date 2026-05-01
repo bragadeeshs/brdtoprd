@@ -1,5 +1,6 @@
 /* =========================================================================
-   StoryForge — design tokens
+   Lucid — design tokens (legacy localStorage / env keys still use
+   `storyforge:*` for back-compat; brand-name swap was M14.0)
    ========================================================================= */
 :root {
   /* Surfaces */
