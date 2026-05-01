@@ -17,13 +17,13 @@
   /* Borders */
   --border: #e5e3dd;
   --border-strong: #d4d2cb;
-  --border-focus: #6366f1;
+  --border-focus: #14b8a6;
 
   /* Accents */
-  --accent: #6366f1;          /* indigo-500 */
-  --accent-strong: #4f46e5;   /* indigo-600 */
-  --accent-soft: #eef2ff;     /* indigo-50 */
-  --accent-ink: #4338ca;      /* indigo-700 */
+  --accent: #14b8a6;          /* teal-500 — M13.4 brand swap */
+  --accent-strong: #0d9488;   /* teal-600 */
+  --accent-soft: #f0fdfa;     /* teal-50 */
+  --accent-ink: #0f766e;      /* teal-700 */
 
   --success: #10b981;
   --success-soft: #ecfdf5;
@@ -49,8 +49,8 @@
   --pink-soft: #fdf2f8;
   --pink-ink: #be185d;
 
-  /* Hero gradient (text) */
-  --gradient: linear-gradient(90deg, #4f46e5 0%, #9333ea 50%, #ec4899 100%);
+  /* Hero gradient (text) — M13.4 swapped to teal → cyan → sky */
+  --gradient: linear-gradient(90deg, #0d9488 0%, #06b6d4 50%, #0ea5e9 100%);
 
   /* Type */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -62,7 +62,7 @@
   --shadow-sm: 0 1px 3px rgba(24, 24, 27, 0.06), 0 1px 2px rgba(24, 24, 27, 0.04);
   --shadow-md: 0 4px 6px -1px rgba(24, 24, 27, 0.06), 0 2px 4px -2px rgba(24, 24, 27, 0.04);
   --shadow-lg: 0 10px 15px -3px rgba(24, 24, 27, 0.08), 0 4px 6px -4px rgba(24, 24, 27, 0.05);
-  --shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(20, 184, 166, 0.22);
 
   /* Radii */
   --radius-sm: 6px;
@@ -115,8 +115,8 @@
   /* Hero gradient — the only piece of the brand we let bloom large.
    * Reserve for: empty states, sign-in screen, the Logo. Never on
    * standard buttons or cards (would dilute the moment). */
-  --gradient-hero: linear-gradient(135deg, #4f46e5 0%, #9333ea 50%, #ec4899 100%);
-  --gradient-soft: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(147, 51, 234, 0.06) 50%, rgba(236, 72, 153, 0.08) 100%);
+  --gradient-hero: linear-gradient(135deg, #0d9488 0%, #06b6d4 50%, #0ea5e9 100%);
+  --gradient-soft: linear-gradient(135deg, rgba(13, 148, 136, 0.08) 0%, rgba(6, 182, 212, 0.06) 50%, rgba(14, 165, 233, 0.08) 100%);
 
   /* M10.2 — Typography scale.
    *
@@ -160,7 +160,7 @@ html[data-theme='dark'] {
   --surface-1: #18181b;
   --surface-2: #1f1f23;
   --surface-3: #27272a;
-  --gradient-soft: linear-gradient(135deg, rgba(129, 140, 248, 0.10) 0%, rgba(147, 51, 234, 0.08) 50%, rgba(236, 72, 153, 0.10) 100%);
+  --gradient-soft: linear-gradient(135deg, rgba(45, 212, 191, 0.10) 0%, rgba(34, 211, 238, 0.08) 50%, rgba(56, 189, 248, 0.10) 100%);
 
   --text-strong: #fafafa;
   --text: #e4e4e7;
@@ -170,10 +170,10 @@ html[data-theme='dark'] {
   --border: #27272a;
   --border-strong: #3f3f46;
 
-  --accent: #818cf8;
-  --accent-strong: #6366f1;
-  --accent-soft: #1e1b4b;
-  --accent-ink: #c7d2fe;
+  --accent: #2dd4bf;          /* teal-400 — dark-theme equivalent of teal-500 */
+  --accent-strong: #14b8a6;   /* teal-500 */
+  --accent-soft: #134e4a;     /* teal-900 — chip backgrounds */
+  --accent-ink: #99f6e4;      /* teal-200 — text on accent-soft */
 
   --success-soft: #022c22;
   --success-ink: #a7f3d0;
@@ -675,8 +675,8 @@ a:hover {
   --lp-text-fainter: #5e5f70;
   --lp-cta-bg: #ffffff;
   --lp-cta-fg: #0a0a0c;
-  --lp-accent-1: rgba(99, 102, 241, 0.30);
-  --lp-accent-2: rgba(168, 85, 247, 0.25);
+  --lp-accent-1: rgba(20, 184, 166, 0.30);   /* teal-500 alpha */
+  --lp-accent-2: rgba(6, 182, 212, 0.25);    /* cyan-500 alpha */
   --lp-vignette: rgba(10, 10, 12, 0.85);
 }
 
@@ -695,8 +695,8 @@ a:hover {
     --lp-text-fainter: #9a9ba8;
     --lp-cta-bg: #0a0a0c;
     --lp-cta-fg: #ffffff;
-    --lp-accent-1: rgba(99, 102, 241, 0.18);
-    --lp-accent-2: rgba(168, 85, 247, 0.14);
+    --lp-accent-1: rgba(20, 184, 166, 0.18);
+    --lp-accent-2: rgba(6, 182, 212, 0.14);
     --lp-vignette: rgba(250, 250, 249, 0.85);
   }
 }

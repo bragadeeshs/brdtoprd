@@ -179,7 +179,7 @@ function Nav() {
             width: 28,
             height: 28,
             borderRadius: 8,
-            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+            background: 'linear-gradient(135deg, #14b8a6, #06b6d4)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -352,12 +352,12 @@ function ProductPreview() {
 
 function ArtifactCard({ tag, tagTone, title, quote, meta }) {
   const toneBg = {
-    accent: 'rgba(99, 102, 241, 0.15)',
+    accent: 'rgba(20, 184, 166, 0.15)',
     warn: 'rgba(245, 158, 11, 0.15)',
     info: 'rgba(56, 189, 248, 0.15)',
   }[tagTone]
   const toneFg = {
-    accent: '#a5b4fc',
+    accent: '#5eead4',
     warn: '#fbbf24',
     info: '#7dd3fc',
   }[tagTone]
@@ -682,7 +682,7 @@ function PlanCard({ plan }) {
         flexDirection: 'column',
         gap: 18,
         position: 'relative',
-        boxShadow: isHi ? '0 24px 48px -16px rgba(99,102,241,0.20)' : 'none',
+        boxShadow: isHi ? '0 24px 48px -16px rgba(20,184,166,0.25)' : 'none',
       }}
     >
       {isHi && (
@@ -691,7 +691,7 @@ function PlanCard({ plan }) {
             position: 'absolute',
             top: -12,
             left: 24,
-            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+            background: 'linear-gradient(135deg, #14b8a6, #06b6d4)',
             color: '#fff',
             fontSize: 11,
             fontWeight: 600,
