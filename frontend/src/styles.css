@@ -700,3 +700,161 @@ a:hover {
     --lp-vignette: rgba(250, 250, 249, 0.85);
   }
 }
+
+/* M13.2 — Bulb-and-cord SignInPage. The page starts dim (lights off,
+   reading-by-phone-screen vibe). Clicking the cord lights the bulb,
+   warms the page, and fades the Clerk widget in. Reduced-motion users
+   skip the animations and get an instant toggle. */
+.bulbpage {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #08080b 0%, #14141d 100%);
+  color: #c7c8d6;
+  transition: background 700ms ease, color 700ms ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  overflow-x: hidden;
+}
+.bulbpage.is-lit {
+  background:
+    radial-gradient(circle at 50% 22%, #fef3c7 0%, #fafaf9 35%, #fafaf9 100%);
+  color: #2a2a32;
+}
+
+.bulb-rig {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+}
+
+.bulb-cord-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: top center;
+  transition: transform 220ms cubic-bezier(.34, 1.56, .64, 1);
+  outline-offset: 8px;
+}
+.bulb-cord-btn:focus-visible {
+  outline: 2px solid #fbbf24;
+  border-radius: 4px;
+}
+.bulb-cord-btn.is-tugging { transform: translateY(18px) scaleY(1.04); }
+
+.bulb-cord-line {
+  width: 2px;
+  height: 180px;
+  background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.32) 60%, rgba(255,255,255,0.55) 100%);
+  transition: background 700ms ease;
+}
+.is-lit .bulb-cord-line {
+  background: linear-gradient(180deg, transparent 0%, rgba(120,80,30,0.30) 60%, rgba(120,80,30,0.50) 100%);
+}
+
+.bulb-svg-wrap { position: relative; pointer-events: none; }
+.bulb-halo {
+  position: absolute;
+  inset: -120px;
+  background: radial-gradient(circle, rgba(252, 211, 77, 0.55) 0%, rgba(252, 211, 77, 0) 60%);
+  opacity: 0;
+  transition: opacity 800ms ease;
+  pointer-events: none;
+}
+.is-lit .bulb-halo { opacity: 1; }
+
+.bulb-glass {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: rgba(255, 255, 255, 0.30);
+  stroke-width: 2;
+  transition: fill 700ms ease, stroke 700ms ease;
+}
+.is-lit .bulb-glass { fill: #fde68a; stroke: #f59e0b; }
+
+.bulb-filament {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1.6;
+  fill: none;
+  transition: stroke 700ms ease;
+}
+.is-lit .bulb-filament { stroke: #b45309; }
+
+.bulb-cap {
+  fill: rgba(255, 255, 255, 0.20);
+  transition: fill 700ms ease;
+}
+.is-lit .bulb-cap { fill: #71717a; }
+
+.bulb-explainer {
+  margin-top: 24px;
+  padding: 0 24px;
+  text-align: center;
+  max-width: 540px;
+  transition: opacity 600ms ease;
+}
+.bulbpage.is-lit .bulb-explainer { opacity: 0.65; }
+
+.bulb-pull-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(199, 200, 214, 0.65);
+  animation: bulb-hint-bounce 2.4s ease-in-out infinite;
+}
+.bulbpage.is-lit .bulb-pull-hint { display: none; }
+
+@keyframes bulb-hint-bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.65; }
+  50%      { transform: translateY(-4px); opacity: 1; }
+}
+
+.bulb-skip {
+  position: absolute;
+  bottom: 24px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: rgba(199, 200, 214, 0.55);
+}
+.bulb-skip a {
+  color: rgba(199, 200, 214, 0.80);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.bulbpage.is-lit .bulb-skip { display: none; }
+
+.bulb-clerk {
+  margin-top: 40px;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 600ms ease 350ms, transform 600ms ease 350ms;
+  pointer-events: none;
+}
+.bulbpage.is-lit .bulb-clerk {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulbpage,
+  .bulb-cord-line,
+  .bulb-glass,
+  .bulb-filament,
+  .bulb-cap,
+  .bulb-halo,
+  .bulb-explainer,
+  .bulb-clerk {
+    transition: none !important;
+  }
+  .bulb-pull-hint { animation: none; }
+}
