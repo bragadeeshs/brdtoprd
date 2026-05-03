@@ -1,0 +1,1044 @@
+/**
+ * M14.1.b — DossierPane: renders the M14 narrated dossier.
+ *
+ * Reads `extraction.lens_payload` (the DocumentDossier JSON the backend
+ * persists when lens='dossier'). Renders:
+ *
+ *   [Sticky chapter nav: I · II · III · IV]
+ *   ─── Overture (italic, large, centred) ───
+ *   ACT I — ORIENT
+ *     Brief · TLDR Ladder · 5W1H            (separated by italic narrator bridges)
+ *   ACT II — STRUCTURE
+ *     Glossary · Mindmap · Domain · Systems
+ *   ACT III — INTERROGATE
+ *     5 Whys · Assumptions · Inversion · Better Questions
+ *   ACT IV — ACT
+ *     Action Items · Decisions · What to Revisit · User Stories (if any)
+ *   Closing line.
+ *
+ * Each section is its own component (kept inline in this file for now —
+ * if it grows, split into ./sections/). Bridges are <Bridge> — a small
+ * italic-centred-with-rules narrator block.
+ *
+ * v1 caveats:
+ *   - No source-quote provenance click-to-jump (M14.2)
+ *   - No glossary tooltips on hover (M14.2)
+ *   - No chat (M14.4)
+ *   - No stakeholder views (M14.5)
+ *   - Sticky nav scrollspy is one-way (anchor links scroll smoothly; no
+ *     active-chapter highlighting yet — M14.1.c polish)
+ */
+import React, { useMemo } from 'react'
+
+export default function DossierPane({ extraction }) {
+  const dossier = extraction?.lens_payload
+  if (!dossier) {
+    return (
+      <div style={emptyShell}>
+        <p style={{ color: 'var(--text-muted)' }}>
+          No dossier payload found on this extraction.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={paneShell}>
+      <ChapterNav />
+      <div style={contentColumn}>
+        <Overture text={dossier.overture} />
+
+        <Chapter id="orient" roman="I" title="Orient" intro={dossier.orient_intro}>
+          <BriefSection brief={dossier.brief} />
+          <Bridge text={dossier.bridge_brief_to_tldr} />
+          <TLDRLadder ladder={dossier.tldr_ladder} />
+          <Bridge text={dossier.bridge_tldr_to_5w1h} />
+          <FiveW1H w={dossier.five_w_one_h} />
+        </Chapter>
+
+        <Bridge text={dossier.bridge_5w1h_to_structure} />
+        <Chapter id="structure" roman="II" title="Structure" intro={dossier.structure_intro}>
+          <Glossary terms={dossier.glossary} />
+          <Bridge text={dossier.bridge_glossary_to_mindmap} />
+          <MindmapTree mindmap={dossier.mindmap} />
+          <Bridge text={dossier.bridge_mindmap_to_domain} />
+          <DomainGrid domain={dossier.domain} />
+          <Bridge text={dossier.bridge_domain_to_systems} />
+          <SystemsView systems={dossier.systems} />
+        </Chapter>
+
+        <Bridge text={dossier.bridge_systems_to_interrogate} />
+        <Chapter id="interrogate" roman="III" title="Interrogate" intro={dossier.interrogate_intro}>
+          <FiveWhys steps={dossier.five_whys} />
+          <Bridge text={dossier.bridge_whys_to_assumptions} />
+          <AssumptionsAudit items={dossier.assumptions} />
+          <Bridge text={dossier.bridge_assumptions_to_inversion} />
+          <InversionList items={dossier.inversion} />
+          <Bridge text={dossier.bridge_inversion_to_questions} />
+          <BetterQuestions items={dossier.better_questions} />
+        </Chapter>
+
+        <Bridge text={dossier.bridge_questions_to_act} />
+        <Chapter id="act" roman="IV" title="Act" intro={dossier.act_intro}>
+          <ActionItems items={dossier.action_items} />
+          <DecisionsRecord
+            made={dossier.decisions_made}
+            open={dossier.decisions_open}
+          />
+          <WhatToRevisit items={dossier.what_to_revisit} />
+          {dossier.user_stories && dossier.user_stories.length > 0 && (
+            <UserStoriesSection stories={dossier.user_stories} />
+          )}
+        </Chapter>
+
+        <Closing text={dossier.closing} />
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Layout shells
+// ============================================================================
+
+const paneShell = {
+  flex: 1,
+  background: 'var(--surface-0)',
+  overflow: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
+}
+
+const contentColumn = {
+  width: '100%',
+  maxWidth: 820,
+  margin: '0 auto',
+  padding: '40px 32px 100px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 24,
+}
+
+const emptyShell = {
+  flex: 1,
+  display: 'grid',
+  placeItems: 'center',
+  padding: 'var(--space-8)',
+}
+
+// ============================================================================
+// Chapter nav (sticky)
+// ============================================================================
+
+function ChapterNav() {
+  const chapters = [
+    { id: 'orient', roman: 'I', title: 'Orient' },
+    { id: 'structure', roman: 'II', title: 'Structure' },
+    { id: 'interrogate', roman: 'III', title: 'Interrogate' },
+    { id: 'act', roman: 'IV', title: 'Act' },
+  ]
+  return (
+    <nav
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 5,
+        background: 'var(--surface-0)',
+        borderBottom: '1px solid var(--border)',
+        padding: '12px 24px',
+        display: 'flex',
+        gap: 8,
+        justifyContent: 'center',
+        flexWrap: 'wrap',
+        backdropFilter: 'blur(6px)',
+      }}
+    >
+      {chapters.map((c) => (
+        <a
+          key={c.id}
+          href={`#${c.id}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 14px',
+            borderRadius: 999,
+            fontSize: 13,
+            color: 'var(--text-muted)',
+            textDecoration: 'none',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-elevated)',
+          }}
+        >
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-strong)' }}>
+            {c.roman}.
+          </span>
+          {c.title}
+        </a>
+      ))}
+    </nav>
+  )
+}
+
+// ============================================================================
+// Overture / Closing — narrative bookends
+// ============================================================================
+
+function Overture({ text }) {
+  return (
+    <div
+      style={{
+        margin: '32px 0 24px',
+        padding: '28px 32px',
+        background: 'var(--gradient-soft)',
+        borderRadius: 'var(--radius-lg)',
+        borderLeft: '3px solid var(--accent)',
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          fontFamily: 'var(--font-display)',
+          fontSize: 19,
+          lineHeight: 1.55,
+          color: 'var(--text-strong)',
+          fontStyle: 'italic',
+          letterSpacing: '-0.005em',
+        }}
+      >
+        {text}
+      </p>
+    </div>
+  )
+}
+
+function Closing({ text }) {
+  return (
+    <div
+      style={{
+        marginTop: 48,
+        padding: '20px 24px',
+        borderTop: '1px solid var(--border)',
+        textAlign: 'center',
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          fontFamily: 'var(--font-display)',
+          fontSize: 17,
+          lineHeight: 1.55,
+          color: 'var(--text-strong)',
+          fontStyle: 'italic',
+        }}
+      >
+        {text}
+      </p>
+    </div>
+  )
+}
+
+// ============================================================================
+// Chapter wrapper — Roman numeral header + intro line
+// ============================================================================
+
+function Chapter({ id, roman, title, intro, children }) {
+  return (
+    <section id={id} style={{ marginTop: 32 }}>
+      <header style={{ marginBottom: 18, paddingTop: 16 }}>
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: 'var(--text-faint, var(--text-soft))',
+            marginBottom: 6,
+          }}
+        >
+          ACT {roman} — {title}
+        </div>
+        {intro && (
+          <p
+            style={{
+              margin: 0,
+              fontSize: 15,
+              lineHeight: 1.6,
+              color: 'var(--text-muted)',
+              fontStyle: 'italic',
+            }}
+          >
+            {intro}
+          </p>
+        )}
+      </header>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// Bridge — narrator transition between sections
+// ============================================================================
+
+function Bridge({ text }) {
+  if (!text) return null
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        margin: '4px 12px',
+      }}
+    >
+      <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+      <p
+        style={{
+          margin: 0,
+          fontSize: 13,
+          fontStyle: 'italic',
+          color: 'var(--text-muted)',
+          textAlign: 'center',
+          maxWidth: 420,
+        }}
+      >
+        {text}
+      </p>
+      <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+    </div>
+  )
+}
+
+// ============================================================================
+// Section: Brief
+// ============================================================================
+
+function SectionTitle({ children }) {
+  return (
+    <h3
+      style={{
+        margin: 0,
+        fontFamily: 'var(--font-display)',
+        fontSize: 22,
+        fontWeight: 600,
+        color: 'var(--text-strong)',
+        letterSpacing: '-0.01em',
+      }}
+    >
+      {children}
+    </h3>
+  )
+}
+
+function SectionShell({ title, children }) {
+  return (
+    <div
+      style={{
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '22px 24px',
+        boxShadow: 'var(--shadow-xs)',
+      }}
+    >
+      <header style={{ marginBottom: 14 }}>
+        <SectionTitle>{title}</SectionTitle>
+      </header>
+      {children}
+    </div>
+  )
+}
+
+function BriefSection({ brief }) {
+  if (!brief) return null
+  return (
+    <SectionShell title="Brief">
+      <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: 'var(--text)' }}>
+        {brief.summary}
+      </p>
+      {brief.tags && brief.tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
+          {brief.tags.map((t) => (
+            <span
+              key={t}
+              style={{
+                fontSize: 11.5,
+                padding: '3px 9px',
+                borderRadius: 999,
+                background: 'var(--accent-soft)',
+                color: 'var(--accent-ink)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: TLDR Ladder
+// ============================================================================
+
+function TLDRLadder({ ladder }) {
+  if (!ladder) return null
+  const rows = [
+    { label: '1 line', text: ladder.one_line },
+    { label: '1 paragraph', text: ladder.one_paragraph },
+    { label: '1 page', text: ladder.one_page },
+  ]
+  return (
+    <SectionShell title="TLDR Ladder">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {rows.map((r) => (
+          <div key={r.label} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+            <span
+              style={{
+                flexShrink: 0,
+                width: 90,
+                fontSize: 11,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--text-soft)',
+                fontFamily: 'var(--font-mono)',
+                paddingTop: 3,
+              }}
+            >
+              {r.label}
+            </span>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: 'var(--text)', flex: 1 }}>
+              {r.text}
+            </p>
+          </div>
+        ))}
+      </div>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: 5W1H
+// ============================================================================
+
+function FiveW1H({ w }) {
+  if (!w) return null
+  const cells = [
+    { k: 'WHO', v: w.who },
+    { k: 'WHAT', v: w.what },
+    { k: 'WHEN', v: w.when },
+    { k: 'WHERE', v: w.where },
+    { k: 'WHY', v: w.why },
+    { k: 'HOW', v: w.how },
+  ]
+  return (
+    <SectionShell title="5W1H">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 14,
+        }}
+      >
+        {cells.map((c) => (
+          <div
+            key={c.k}
+            style={{
+              padding: '12px 14px',
+              borderRadius: 'var(--radius)',
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                color: 'var(--accent-strong)',
+                fontFamily: 'var(--font-mono)',
+                marginBottom: 4,
+              }}
+            >
+              {c.k}
+            </div>
+            <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--text)' }}>
+              {c.v}
+            </p>
+          </div>
+        ))}
+      </div>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: Glossary
+// ============================================================================
+
+function Glossary({ terms }) {
+  if (!terms || terms.length === 0) return null
+  return (
+    <SectionShell title="Glossary">
+      <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 18, rowGap: 10 }}>
+        {terms.map((t) => (
+          <React.Fragment key={t.term}>
+            <dt
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: 'var(--text-strong)',
+                paddingTop: 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t.term}
+            </dt>
+            <dd style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--text-muted)' }}>
+              {t.definition}
+            </dd>
+          </React.Fragment>
+        ))}
+      </dl>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: Mindmap (3-level nested list)
+// ============================================================================
+
+function MindmapTree({ mindmap }) {
+  if (!mindmap) return null
+  return (
+    <SectionShell title="Mindmap">
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.7 }}>
+        <div style={{ fontWeight: 700, color: 'var(--accent-ink)', marginBottom: 4 }}>
+          {mindmap.root}
+        </div>
+        <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'none' }}>
+          {(mindmap.branches || []).map((b, i) => (
+            <li key={i} style={{ position: 'relative', paddingLeft: 14 }}>
+              <span style={branchTick}>├──</span>
+              <span style={{ fontWeight: 600, color: 'var(--text-strong)' }}>{b.label}</span>
+              {b.children && b.children.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'none' }}>
+                  {b.children.map((sb, j) => (
+                    <li key={j} style={{ position: 'relative', paddingLeft: 14 }}>
+                      <span style={branchTick}>├──</span>
+                      <span style={{ color: 'var(--text)' }}>{sb.label}</span>
+                      {sb.children && sb.children.length > 0 && (
+                        <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'none' }}>
+                          {sb.children.map((leaf, k) => (
+                            <li key={k} style={{ position: 'relative', paddingLeft: 14 }}>
+                              <span style={branchTick}>└──</span>
+                              <span style={{ color: 'var(--text-muted)' }}>{leaf.label}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </SectionShell>
+  )
+}
+
+const branchTick = {
+  position: 'absolute',
+  left: -2,
+  color: 'var(--text-soft)',
+  fontFamily: 'var(--font-mono)',
+}
+
+// ============================================================================
+// Section: Domain Map (7-card grid)
+// ============================================================================
+
+function DomainGrid({ domain }) {
+  if (!domain) return null
+  const branches = [
+    { k: 'Business Purpose', v: domain.business_purpose },
+    { k: 'Stakeholders', v: domain.stakeholders },
+    { k: 'Process Flow', v: domain.process_flow },
+    { k: 'Data', v: domain.data },
+    { k: 'Rules', v: domain.rules },
+    { k: 'Metrics', v: domain.metrics },
+    { k: 'Problems / Opportunities', v: domain.problems_opportunities },
+  ]
+  return (
+    <SectionShell title="Domain Map">
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 12,
+        }}
+      >
+        {branches.map((b) => (
+          <div
+            key={b.k}
+            style={{
+              padding: '14px 16px',
+              borderRadius: 'var(--radius)',
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--accent-strong)',
+                marginBottom: 8,
+              }}
+            >
+              {b.k}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 13, lineHeight: 1.5, color: 'var(--text)' }}>
+              {(b.v?.points || []).map((p, i) => (
+                <li key={i} style={{ marginBottom: 3 }}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: Systems View (entities + flows + feedback loops)
+// ============================================================================
+
+function SystemsView({ systems }) {
+  if (!systems) return null
+  const { entities = [], flows = [], feedback_loops = [] } = systems
+  if (!entities.length && !flows.length && !feedback_loops.length) return null
+
+  return (
+    <SectionShell title="Systems View">
+      {entities.length > 0 && (
+        <SubsectionHeader>Entities</SubsectionHeader>
+      )}
+      {entities.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginBottom: 14 }}>
+          {entities.map((e, i) => (
+            <div key={i} style={{ padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-strong)' }}>{e.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{e.role}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {flows.length > 0 && <SubsectionHeader>Flows</SubsectionHeader>}
+      {flows.length > 0 && (
+        <ul style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: 13, lineHeight: 1.55 }}>
+          {flows.map((f, i) => (
+            <li key={i}>
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-strong)' }}>{f.from_entity}</span>{' '}
+              <span style={{ color: 'var(--text-soft)' }}>→</span>{' '}
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-strong)' }}>{f.to_entity}</span>{' '}
+              <span style={{ color: 'var(--text-muted)' }}>· {f.label}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {feedback_loops.length > 0 && <SubsectionHeader>Feedback loops</SubsectionHeader>}
+      {feedback_loops.length > 0 && (
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.55, color: 'var(--text)' }}>
+          {feedback_loops.map((l, i) => (
+            <li key={i} style={{ marginBottom: 4 }}>{l.description}</li>
+          ))}
+        </ul>
+      )}
+    </SectionShell>
+  )
+}
+
+function SubsectionHeader({ children }) {
+  return (
+    <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-soft)', marginBottom: 6 }}>
+      {children}
+    </div>
+  )
+}
+
+// ============================================================================
+// Section: 5 Whys (chain)
+// ============================================================================
+
+function FiveWhys({ steps }) {
+  if (!steps || steps.length === 0) return null
+  return (
+    <SectionShell title="5 Whys">
+      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {steps.map((s, i) => (
+          <li key={i} style={{ display: 'flex', gap: 14 }}>
+            <div
+              style={{
+                flexShrink: 0,
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                background: 'var(--accent-soft)',
+                color: 'var(--accent-ink)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {i + 1}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 4 }}>
+                {s.question}
+              </div>
+              <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55 }}>
+                → {s.answer}
+              </div>
+              {s.evidence && (
+                <blockquote
+                  style={{
+                    margin: '8px 0 0',
+                    padding: '6px 12px',
+                    borderLeft: '2px solid var(--border-strong)',
+                    fontSize: 12.5,
+                    fontStyle: 'italic',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  “{s.evidence}”
+                </blockquote>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: Assumptions Audit
+// ============================================================================
+
+function AssumptionsAudit({ items }) {
+  if (!items || items.length === 0) return null
+  const toneFor = (lvl) => ({
+    high: { bg: 'var(--danger-soft)', fg: 'var(--danger-ink)' },
+    medium: { bg: 'var(--warn-soft)', fg: 'var(--warn-ink)' },
+    low: { bg: 'var(--info-soft)', fg: 'var(--info-ink)' },
+  }[lvl] || { bg: 'var(--bg-subtle)', fg: 'var(--text-muted)' })
+
+  return (
+    <SectionShell title="Assumptions Audit">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map((a, i) => {
+          const tone = toneFor(a.risk_level)
+          return (
+            <div
+              key={i}
+              style={{
+                padding: '12px 14px',
+                background: 'var(--bg-subtle)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <p style={{ margin: 0, fontSize: 14, color: 'var(--text-strong)', fontWeight: 500, flex: 1 }}>
+                  {a.assumption}
+                </p>
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: tone.bg,
+                    color: tone.fg,
+                    flexShrink: 0,
+                  }}
+                >
+                  {a.risk_level}
+                </span>
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {a.risk_explanation}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: Inversion (failure modes)
+// ============================================================================
+
+function InversionList({ items }) {
+  if (!items || items.length === 0) return null
+  return (
+    <SectionShell title="Inversion · what could go catastrophically wrong">
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((f, i) => (
+          <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ color: 'var(--danger-ink)', fontFamily: 'var(--font-mono)', flexShrink: 0, marginTop: 2 }}>×</span>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--text)', lineHeight: 1.55, flex: 1 }}>
+              {f.scenario}
+            </p>
+            {f.likelihood && (
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-soft)',
+                  fontFamily: 'var(--font-mono)',
+                  flexShrink: 0,
+                  marginTop: 2,
+                }}
+              >
+                {f.likelihood}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: Better Questions
+// ============================================================================
+
+function BetterQuestions({ items }) {
+  if (!items || items.length === 0) return null
+  return (
+    <SectionShell title="Better Questions">
+      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {items.map((q, i) => (
+          <li key={i}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-strong)', lineHeight: 1.5 }}>
+              {i + 1}. {q.question}
+            </p>
+            {q.why_it_matters && (
+              <p style={{ margin: '4px 0 0 18px', fontSize: 12.5, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                {q.why_it_matters}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: Action Items
+// ============================================================================
+
+function ActionItems({ items }) {
+  if (!items || items.length === 0) return null
+  return (
+    <SectionShell title="Action Items">
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Owner</th>
+            <th style={thStyle}>Action</th>
+            <th style={thStyle}>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((a, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--accent-ink)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {a.owner}
+                </span>
+              </td>
+              <td style={{ ...tdStyle, color: 'var(--text)' }}>{a.action}</td>
+              <td style={{ ...tdStyle, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{a.when}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </SectionShell>
+  )
+}
+
+const thStyle = {
+  textAlign: 'left',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'var(--text-soft)',
+  padding: '6px 10px',
+  borderBottom: '1px solid var(--border-strong)',
+}
+
+const tdStyle = {
+  padding: '10px 10px',
+  borderBottom: '1px solid var(--border)',
+  verticalAlign: 'top',
+}
+
+// ============================================================================
+// Section: Decisions Made / Open
+// ============================================================================
+
+function DecisionsRecord({ made = [], open = [] }) {
+  if (!made.length && !open.length) return null
+  return (
+    <SectionShell title="Decisions">
+      {made.length > 0 && (
+        <>
+          <SubsectionHeader>Decisions made</SubsectionHeader>
+          <ul style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: 14, lineHeight: 1.55, color: 'var(--text)' }}>
+            {made.map((d, i) => (
+              <li key={i} style={{ marginBottom: 4 }}>{d}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      {open.length > 0 && (
+        <>
+          <SubsectionHeader>Open / unresolved</SubsectionHeader>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, lineHeight: 1.55, color: 'var(--text-muted)' }}>
+            {open.map((d, i) => (
+              <li key={i} style={{ marginBottom: 4 }}>{d}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: What to Revisit
+// ============================================================================
+
+function WhatToRevisit({ items }) {
+  if (!items || items.length === 0) return null
+  return (
+    <SectionShell title="What to Revisit">
+      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {items.map((r, i) => (
+          <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <span
+              style={{
+                flexShrink: 0,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13,
+                fontWeight: 700,
+                color: 'var(--accent-strong)',
+                marginTop: 2,
+              }}
+            >
+              {i + 1}.
+            </span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)', marginBottom: 2 }}>
+                {r.item}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {r.why}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// Section: User Stories (folded in per M14 pick (b))
+// ============================================================================
+
+function UserStoriesSection({ stories }) {
+  if (!stories || stories.length === 0) return null
+  return (
+    <SectionShell title="User Stories">
+      <p style={{ margin: '0 0 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+        The doc is requirements-shaped — Lucid extracted user stories with acceptance criteria.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {stories.map((s) => (
+          <div
+            key={s.id}
+            style={{
+              padding: '12px 14px',
+              background: 'var(--bg-subtle)',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--accent-strong)' }}>
+                {s.id}
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>
+                As a {s.actor}, I want {s.want}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 8, paddingLeft: 4 }}>
+              so that {s.so_that}.
+            </div>
+            {s.criteria && s.criteria.length > 0 && (
+              <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {s.criteria.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            )}
+            {s.source_quote && (
+              <blockquote
+                style={{
+                  margin: '10px 0 0',
+                  padding: '6px 12px',
+                  borderLeft: '2px solid var(--border-strong)',
+                  fontSize: 12.5,
+                  fontStyle: 'italic',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                “{s.source_quote}”
+              </blockquote>
+            )}
+          </div>
+        ))}
+      </div>
+    </SectionShell>
+  )
+}

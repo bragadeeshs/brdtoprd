@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
-import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extract, extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -15,6 +15,7 @@ import { identifyUser, track } from './lib/analytics.js'
 // chunk only carries the studio (the always-mounted home page).
 // Settings exports four named pages from the same module; they all
 // share one chunk because they're in the same file.
+const DossierPane = lazy(() => import('./components/dossier/DossierPane.jsx'))
 const Account = lazy(() => import('./pages/Account.jsx'))
 const Documents = lazy(() => import('./pages/Documents.jsx'))
 const Project = lazy(() => import('./pages/Project.jsx'))
@@ -529,14 +530,19 @@ function AuthedApp() {
     track('extraction_started', { input_chars: inputChars })
     const controller = new AbortController()
     extractAbortRef.current = controller
+    // M14.1.b — default new uploads to the dossier lens. The streaming
+    // backend route (/api/extract/stream) is still wired to the stories
+    // pipeline, so dossier uploads use the non-streaming /api/extract for
+    // now (M14.1.c will port streaming). Stories uploads keep the live
+    // progress card via extractStream.
+    const lens = 'dossier'
     try {
-      // M5.3 — streaming variant. Backend still persists + returns the
-      // canonical full record on `complete`; we just get usage ticks along
-      // the way which feed the LoadingState progress card.
-      const record = await extractStream(
-        { file, text, filename },
-        { onUsage: (u) => setStreamUsage(u), signal: controller.signal },
-      )
+      const record = lens === 'dossier'
+        ? await extract({ file, text, filename, lens })
+        : await extractStream(
+            { file, text, filename, lens },
+            { onUsage: (u) => setStreamUsage(u), signal: controller.signal },
+          )
       setExtraction(record)
       setExtractionId(record?.id || null)
       refreshPlan()  // M3.5 — usage count just bumped; refresh sidebar bar
@@ -546,6 +552,7 @@ function AuthedApp() {
         input_chars: inputChars,
         live: !!record?.live,
         duration_ms: Date.now() - startedAt,
+        lens,
       })
     } catch (e) {
       // M5.4.2 — abort lands here as DOMException(name='AbortError'). User
@@ -810,7 +817,15 @@ function AuthedApp() {
                     onStop={handleStopExtract}
                   />
                 )}
-                {extraction && !loading && (
+                {extraction && !loading && extraction.lens === 'dossier' ? (
+                  /* M14.1.b — dossier lens uses a single full-width pane.
+                     SourcePane / ResizeHandle / GapsRail are stories-only
+                     concepts (artifacts → source linking, gap drilldown).
+                     The DossierPane reads extraction.lens_payload directly. */
+                  <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>
+                    <DossierPane extraction={extraction} />
+                  </div>
+                ) : extraction && !loading && (
                   isNarrow ? (
                     /* M8.6 — narrow layout: tab strip + one pane. The
                        side GapsRail also gates on !isNarrow below — at
@@ -919,7 +934,7 @@ function AuthedApp() {
       {/* M8.6 — side GapsRail only renders at wide viewports. At narrow
           widths the 'gaps' tab inside .body shows the same component
           inline, so two-instance double-rendering is impossible. */}
-      {isHome && extraction && !loading && showGaps && !isNarrow && (
+      {isHome && extraction && !loading && showGaps && !isNarrow && extraction.lens !== 'dossier' && (
         <GapsRail
           gaps={extraction.gaps}
           extractionId={extractionId}

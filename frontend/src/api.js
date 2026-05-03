@@ -78,7 +78,7 @@ async function jsonOrThrow(res) {
  *  each file is appended as a separate `file` form field, which FastAPI
  *  parses into a list[UploadFile] on the backend. Single-file uploads
  *  produce a one-element list (backward compatible). */
-function buildExtractForm({ file, text, filename, projectId } = {}) {
+function buildExtractForm({ file, text, filename, projectId, lens } = {}) {
   const form = new FormData()
   const files = file == null ? [] : (Array.isArray(file) || file instanceof FileList) ? Array.from(file) : [file]
   for (const f of files) {
@@ -87,14 +87,18 @@ function buildExtractForm({ file, text, filename, projectId } = {}) {
   if (text) form.append('text', text)
   if (filename) form.append('filename', filename)
   if (projectId) form.append('project_id', projectId)
+  // M14.1.b — lens dispatcher. Backend defaults to 'dossier' for new uploads
+  // (the M14 narrated dossier); 'stories' kept for back-compat with any
+  // caller that explicitly wants the legacy user-stories shape.
+  if (lens) form.append('lens', lens)
   return form
 }
 
 /** Create a new extraction. Backend persists and returns the full ExtractionRecord. */
-export async function extract({ file, text, filename, projectId } = {}) {
+export async function extract({ file, text, filename, projectId, lens } = {}) {
   const res = await apiFetch('/api/extract', {
     method: 'POST',
-    body: buildExtractForm({ file, text, filename, projectId }),
+    body: buildExtractForm({ file, text, filename, projectId, lens }),
   })
   return jsonOrThrow(res)
 }
@@ -122,12 +126,12 @@ export async function extract({ file, text, filename, projectId } = {}) {
  * the Anthropic stream as the generator's `with` block exits.
  */
 export async function extractStream(
-  { file, text, filename, projectId } = {},
+  { file, text, filename, projectId, lens } = {},
   { onStart, onUsage, signal } = {},
 ) {
   const { readSSE } = await import('./lib/sse.js')
 
-  const form = buildExtractForm({ file, text, filename, projectId })
+  const form = buildExtractForm({ file, text, filename, projectId, lens })
   const res = await apiFetch('/api/extract/stream', { method: 'POST', body: form, signal })
   if (!res.ok) {
     // Pre-flight error — let jsonOrThrow build the (possibly paywall) Error.
