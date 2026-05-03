@@ -169,7 +169,7 @@ export default function DossierPane({ extraction }) {
 
 const paneShell = {
   flex: 1,
-  background: 'var(--surface-0)',
+  background: 'var(--bg-elevated)',  /* M14.5 — pure white workspace, like Notion */
   overflow: 'auto',
   display: 'flex',
   flexDirection: 'column',
@@ -177,12 +177,14 @@ const paneShell = {
 
 const contentColumn = {
   width: '100%',
-  maxWidth: 820,
+  /* M14.5 — flex-fluid width with sensible bounds. Reads naturally on
+     anything from 13" to 32"; never gets line-length-uncomfortable. */
+  maxWidth: 'min(960px, 92vw)',
   margin: '0 auto',
-  padding: '40px 32px 100px',
+  padding: 'clamp(32px, 5vw, 64px) clamp(20px, 4vw, 48px) 120px',
   display: 'flex',
   flexDirection: 'column',
-  gap: 24,
+  gap: 32,
 }
 
 const emptyShell = {
@@ -209,14 +211,15 @@ function ChapterNav({ active }) {
         position: 'sticky',
         top: 0,
         zIndex: 5,
-        background: 'var(--surface-0)',
+        background: 'rgba(255, 255, 255, 0.85)',
         borderBottom: '1px solid var(--border)',
-        padding: '12px 24px',
+        padding: '14px 24px',
         display: 'flex',
-        gap: 8,
+        gap: 6,
         justifyContent: 'center',
         flexWrap: 'wrap',
-        backdropFilter: 'blur(6px)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
       }}
     >
       {chapters.map((c) => {
@@ -228,24 +231,25 @@ function ChapterNav({ active }) {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-              borderRadius: 999,
+              gap: 8,
+              padding: '5px 12px',
+              borderRadius: 6,
               fontSize: 13,
-              fontWeight: isActive ? 600 : 400,
-              color: isActive ? 'var(--accent-ink)' : 'var(--text-muted)',
+              fontWeight: isActive ? 600 : 500,
+              color: isActive ? 'var(--text-strong)' : 'var(--text-muted)',
               textDecoration: 'none',
-              border: '1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)'),
-              background: isActive ? 'var(--accent-soft)' : 'var(--bg-elevated)',
-              transition: 'background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+              border: 'none',
+              background: isActive ? 'var(--bg-hover)' : 'transparent',
+              transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
             }}
           >
             <span style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: isActive ? 'var(--accent-ink)' : 'var(--accent-strong)',
+              fontSize: 10.5,
+              color: 'var(--accent-strong)',
+              letterSpacing: '0.02em',
             }}>
-              {c.roman}.
+              {c.roman}
             </span>
             {c.title}
           </a>
@@ -263,22 +267,21 @@ function Overture({ text }) {
   return (
     <div
       style={{
-        margin: '32px 0 24px',
-        padding: '28px 32px',
-        background: 'var(--gradient-soft)',
-        borderRadius: 'var(--radius-lg)',
-        borderLeft: '3px solid var(--accent)',
+        margin: '24px 0 16px',
+        padding: '4px 0 4px 24px',
+        borderLeft: '2px solid var(--accent)',
       }}
     >
       <p
         style={{
           margin: 0,
           fontFamily: 'var(--font-display)',
-          fontSize: 19,
+          fontSize: 'clamp(17px, 2vw, 21px)',
           lineHeight: 1.55,
           color: 'var(--text-strong)',
           fontStyle: 'italic',
           letterSpacing: '-0.005em',
+          fontWeight: 500,
         }}
       >
         {text}
@@ -291,8 +294,8 @@ function Closing({ text }) {
   return (
     <div
       style={{
-        marginTop: 48,
-        padding: '20px 24px',
+        marginTop: 64,
+        paddingTop: 32,
         borderTop: '1px solid var(--border)',
         textAlign: 'center',
       }}
@@ -301,7 +304,7 @@ function Closing({ text }) {
         style={{
           margin: 0,
           fontFamily: 'var(--font-display)',
-          fontSize: 17,
+          fontSize: 'clamp(16px, 1.6vw, 19px)',
           lineHeight: 1.55,
           color: 'var(--text-strong)',
           fontStyle: 'italic',
@@ -319,34 +322,36 @@ function Closing({ text }) {
 
 function Chapter({ id, roman, title, intro, children }) {
   return (
-    <section id={id} style={{ marginTop: 32 }}>
-      <header style={{ marginBottom: 18, paddingTop: 16 }}>
+    <section id={id} style={{ marginTop: 48 }}>
+      <header style={{ marginBottom: 24 }}>
         <div
           style={{
             fontSize: 11,
-            letterSpacing: '0.16em',
+            letterSpacing: '0.18em',
             textTransform: 'uppercase',
-            color: 'var(--text-faint, var(--text-soft))',
-            marginBottom: 6,
+            color: 'var(--accent-strong)',
+            marginBottom: 8,
+            fontWeight: 600,
           }}
         >
-          ACT {roman} — {title}
+          Act {roman} · {title}
         </div>
         {intro && (
           <p
             style={{
               margin: 0,
-              fontSize: 15,
-              lineHeight: 1.6,
+              fontSize: 16,
+              lineHeight: 1.55,
               color: 'var(--text-muted)',
               fontStyle: 'italic',
+              fontFamily: 'var(--font-display)',
             }}
           >
             {intro}
           </p>
         )}
       </header>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
         {children}
       </div>
     </section>
@@ -360,29 +365,22 @@ function Chapter({ id, roman, title, intro, children }) {
 function Bridge({ text }) {
   if (!text) return null
   return (
-    <div
+    <p
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 14,
-        margin: '4px 12px',
+        margin: '4px 0',
+        fontSize: 14,
+        fontStyle: 'italic',
+        color: 'var(--text-muted)',
+        textAlign: 'center',
+        fontFamily: 'var(--font-display)',
+        lineHeight: 1.55,
+        maxWidth: 540,
+        marginLeft: 'auto',
+        marginRight: 'auto',
       }}
     >
-      <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-      <p
-        style={{
-          margin: 0,
-          fontSize: 13,
-          fontStyle: 'italic',
-          color: 'var(--text-muted)',
-          textAlign: 'center',
-          maxWidth: 420,
-        }}
-      >
-        {text}
-      </p>
-      <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-    </div>
+      {text}
+    </p>
   )
 }
 
@@ -396,10 +394,11 @@ function SectionTitle({ children }) {
       style={{
         margin: 0,
         fontFamily: 'var(--font-display)',
-        fontSize: 22,
+        fontSize: 24,
         fontWeight: 600,
         color: 'var(--text-strong)',
-        letterSpacing: '-0.01em',
+        letterSpacing: '-0.015em',
+        lineHeight: 1.2,
       }}
     >
       {children}
@@ -407,22 +406,19 @@ function SectionTitle({ children }) {
   )
 }
 
+/* M14.5 — section shell flattened. Was a bordered/shadowed white card on
+   a slightly tinted page; now sections sit directly on the page surface
+   separated by whitespace + the section title's visual weight. Reads as
+   "long document" rather than "stacked widgets" — matches the Notion
+   page-as-canvas pattern. */
 function SectionShell({ title, children }) {
   return (
-    <div
-      style={{
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: '22px 24px',
-        boxShadow: 'var(--shadow-xs)',
-      }}
-    >
-      <header style={{ marginBottom: 14 }}>
+    <section style={{ paddingTop: 8 }}>
+      <header style={{ marginBottom: 16 }}>
         <SectionTitle>{title}</SectionTitle>
       </header>
       {children}
-    </div>
+    </section>
   )
 }
 
