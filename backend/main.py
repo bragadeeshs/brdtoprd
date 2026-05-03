@@ -31,6 +31,7 @@ from models import ExtractionRecord
 from routers import api_tokens as api_tokens_router
 from routers import billing as billing_router
 from routers import comments as comments_router
+from routers import chat as chat_router
 from routers import extractions as extractions_router
 from routers import integrations as integrations_router
 from routers import me as me_router
@@ -129,6 +130,8 @@ _protected_deps = [
     Depends(welcome_check),
 ]
 app.include_router(extractions_router.router, dependencies=_protected_deps)
+# M14.4 — per-extraction chat thread. Same auth posture as extractions.
+app.include_router(chat_router.router, dependencies=_protected_deps)
 app.include_router(projects_router.router, dependencies=_protected_deps)
 app.include_router(me_router.router, dependencies=_protected_deps)
 app.include_router(comments_router.router, dependencies=_protected_deps)

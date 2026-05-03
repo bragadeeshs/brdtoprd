@@ -188,6 +188,58 @@ export async function deleteExtractionApi(id) {
   return jsonOrThrow(res)
 }
 
+// ============================================================================
+// M14.4 — chat with a document
+// ============================================================================
+
+/** List the chat thread for an extraction. Returns array ordered by
+ *  created_at ASC. */
+export async function listChatMessagesApi(id) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/chat`)
+  return jsonOrThrow(res)
+}
+
+/** Stream a chat reply. SSE events:
+ *    onText({delta})   — partial text as it streams
+ *    onComplete(msg)   — full assistant message persisted server-side
+ *  Returns a Promise that resolves on `complete` or rejects on `error` /
+ *  network failure. Pass an AbortController.signal to support a Stop button.
+ */
+export async function sendChatMessageStream(
+  id,
+  content,
+  { onText, onComplete, signal } = {},
+) {
+  const { readSSE } = await import('./lib/sse.js')
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+    signal,
+  })
+  if (!res.ok) return jsonOrThrow(res)
+  let final = null
+  await readSSE(res, (eventName, data) => {
+    if (eventName === 'text') onText?.(data)
+    else if (eventName === 'complete') {
+      final = data
+      onComplete?.(data)
+    } else if (eventName === 'error') {
+      const err = new Error(data.detail || 'Chat failed')
+      err.status = data.status
+      throw err
+    }
+  })
+  return final
+}
+
+/** Clear all messages in the chat thread for an extraction. */
+export async function clearChatApi(id) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/chat`, { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
 /** M4.5.3.b — mark an extraction as read for the calling user. Upserts
  *  the (user, extraction) ExtractionView row with last_seen_at = now.
  *  Returns nothing; subsequent GET /api/extractions/{id} responses will

@@ -107,6 +107,28 @@ class Extraction(SQLModel, table=True):
     )
 
 
+class ChatMessage(SQLModel, table=True):
+    """One message in the chat thread for an extraction (M14.4).
+
+    Per-extraction chat: each Lucid dossier becomes a workspace where the
+    user can ask follow-up questions about the document. Conversation
+    persists per-(user, extraction) so coming back tomorrow keeps the
+    thread. Scope by user_id (not extraction.user_id directly) so shared
+    extractions could later carry private chats per viewer; for now they
+    match.
+    """
+    __tablename__ = "chat_message"
+    id: str = Field(primary_key=True)
+    extraction_id: str = Field(foreign_key="extraction.id", index=True)
+    user_id: str = Field(index=True)
+    role: str  # 'user' | 'assistant'
+    content: str
+    model_used: str | None = Field(default=None)  # only set on assistant rows
+    input_tokens: int | None = Field(default=None)
+    output_tokens: int | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+
+
 class PromptTemplate(SQLModel, table=True):
     """Named prompt-suffix template (M7.1.b).
 

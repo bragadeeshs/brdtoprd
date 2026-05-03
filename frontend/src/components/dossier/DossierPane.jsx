@@ -30,6 +30,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react'
 import { ConfidenceBadge, GlossaryTermified, SourceQuote } from './annotations.jsx'
+import ChatPanel from './ChatPanel.jsx'
 
 export default function DossierPane({ extraction }) {
   const dossier = extraction?.lens_payload
@@ -155,6 +156,9 @@ export default function DossierPane({ extraction }) {
 
         <Closing text={dossier.closing} />
       </div>
+      {/* M14.4 — Chat panel as a fixed-position overlay; doesn't affect
+          the scroll layout of the dossier itself. */}
+      <ChatPanel extractionId={extraction?.id} />
     </div>
   )
 }
