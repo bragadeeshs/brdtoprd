@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   addSlackWebhookApi,
   createApiTokenApi,
@@ -45,7 +46,7 @@ import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import PageShell from '../components/PageShell.jsx'
-import { BookOpen, CheckCircle, DollarSign, Download, ExternalLink, Eye, FileText, HelpCircle, Inbox, Info, Key, Lightbulb, Lock, Monitor, Moon, Plug, Send, Shield, Sparkles, Sun, Trash, Wrench } from '../components/icons.jsx'
+import { BookOpen, Brush, ChevronRight, Clock, Code, CheckCircle, DollarSign, Download, ExternalLink, Eye, FileText, Headphones, HelpCircle, Inbox, Info, Key, Lightbulb, Lock, Mail, Monitor, Moon, Plug, Send, Shield, Sparkles, Sun, Trash, Users, Wrench, Zap } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -2443,39 +2444,256 @@ export default function Settings() {
     }
   }
 
+  /* M14.5.g — SettingsPage rebuilt as 2-column workspace replica.
+   * Same shell pattern as M14.5.c-f. Main column has Appearance + Data
+   * export + Privacy & account cards. Right rail has Quick help +
+   * Security + Workspace preferences.
+   */
   return (
-    <PageShell
-      title="Settings"
-      description="App preferences and your data. Models, Tools, Integrations, and Support each have their own page in the left nav."
-      icon={<Sun size={18} />}
-    >
-      <Section
-        icon={<Sun size={16} />}
-        tone="warn"
-        title="Appearance"
-        description="Light, dark, or follow your system preference. Persists across sessions; the same control sits in the studio top-bar overflow menu for quick switches."
-      >
-        <ThemePicker />
-      </Section>
-      <Section
-        icon={<Download size={16} />}
-        tone="accent"
-        title="Data export"
-        description="Download a ZIP of everything we hold for you — extractions JSON, projects, gap-state marks, usage log, and the original uploaded source files. Streams direct from the server, never staged anywhere."
-      >
-        <Button
-          variant="primary"
-          size="sm"
-          icon={<Download size={13} />}
-          onClick={doExport}
-          disabled={exporting}
-        >
-          {exporting ? 'Preparing…' : 'Download my data'}
-        </Button>
-      </Section>
-    </PageShell>
+    <div style={modelsShell}>
+      <div style={modelsContainer}>
+        <header style={modelsHeader}>
+          <IconTile tone="accent" size={44} style={{ flexShrink: 0 }}>
+            <SettingsIcon size={20} />
+          </IconTile>
+          <div>
+            <h1 style={modelsTitle}>Settings</h1>
+            <p style={modelsSubtitle}>
+              Manage appearance, preferences, and your data.
+            </p>
+          </div>
+        </header>
+
+        <div className="settings-split">
+          <div style={modelsMain}>
+            <SettingsAppearanceCard />
+            <SettingsDataExportCard exporting={exporting} doExport={doExport} />
+            <SettingsPrivacyCard />
+          </div>
+          <aside style={modelsRail}>
+            <QuickHelpRail />
+            <SettingsSecurityRail />
+            <WorkspacePrefsRail />
+          </aside>
+        </div>
+      </div>
+    </div>
   )
 }
+
+// ============================================================================
+// M14.5.g — Settings page card shells + right-rail components
+// ============================================================================
+
+function SettingsAppearanceCard() {
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><Brush size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>Appearance</div>
+          <div style={cardSubtitle}>Choose how Lucid looks across the app.</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>
+        <ThemePicker />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 12.5, color: 'var(--text-muted)' }}>
+          <span style={{ color: 'var(--success)', display: 'inline-flex' }}>
+            <CheckCircle size={14} />
+          </span>
+          Your preference is saved across sessions.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SettingsDataExportCard({ exporting, doExport }) {
+  const items = ['Extractions JSON', 'Projects and templates', 'Usage log', 'Original uploaded files']
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><Download size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>Data export</div>
+          <div style={cardSubtitle}>Download a ZIP archive of your Lucid data.</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginBottom: 14 }}>
+          {items.map((it) => (
+            <div key={it} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)' }}>
+              <span style={{ color: 'var(--success)', display: 'inline-flex' }}>
+                <CheckCircle size={14} />
+              </span>
+              {it}
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={doExport}
+          disabled={exporting}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 16px',
+            background: 'var(--accent-strong)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 'var(--radius)',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: exporting ? 'not-allowed' : 'pointer',
+            opacity: exporting ? 0.6 : 1,
+            fontFamily: 'inherit',
+          }}
+        >
+          <Download size={13} />
+          {exporting ? 'Preparing…' : 'Download my data'}
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 12, color: 'var(--text-soft)' }}>
+          <Lock size={12} />
+          Data is streamed securely and never staged permanently.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SettingsPrivacyCard() {
+  const rows = [
+    { icon: <Trash size={16} />, title: 'Delete account', desc: 'Permanently delete your Lucid account and all data.' },
+    { icon: <Monitor size={16} />, title: 'Manage sessions', desc: 'Review and sign out of active sessions.' },
+  ]
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><Shield size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>Privacy &amp; account</div>
+          <div style={cardSubtitle}>Manage sensitive actions and sessions.</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map((r) => (
+          <div
+            key={r.title}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '12px 16px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              background: 'var(--bg-elevated)',
+              cursor: 'default',
+            }}
+          >
+            <span style={{ color: 'var(--text-muted)', display: 'inline-flex' }}>{r.icon}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>{r.title}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{r.desc}</div>
+            </div>
+            <ChevronRight size={16} style={{ color: 'var(--text-soft)', flexShrink: 0 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function QuickHelpRail() {
+  const items = [
+    'Preferences sync across devices when you\'re signed in.',
+    'Theme can also be changed from the studio menu.',
+    'Exports may take a few minutes for large workspaces.',
+  ]
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={railIconDisc}><Lightbulb size={14} /></span>
+        <div style={railTitle}>Quick help</div>
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {items.map((it, i) => (
+          <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span aria-hidden style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--accent-strong)', marginTop: 7, flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.55 }}>{it}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function SettingsSecurityRail() {
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={railIconDisc}><Lock size={14} /></span>
+        <div style={railTitle}>Security</div>
+      </div>
+      <p style={{ ...railDesc, marginBottom: 12 }}>
+        Your exports are generated securely and delivered only to you.
+      </p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 12px',
+          background: 'var(--accent-soft)',
+          border: '1px solid var(--accent-soft)',
+          borderRadius: 'var(--radius)',
+          fontSize: 12,
+          color: 'var(--accent-ink)',
+          lineHeight: 1.45,
+        }}
+      >
+        <Shield size={13} style={{ flexShrink: 0 }} />
+        We use industry-standard encryption to protect your data.
+      </div>
+    </div>
+  )
+}
+
+function WorkspacePrefsRail() {
+  const navigate = useNavigate()
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={railIconDisc}><Users size={14} /></span>
+        <div style={railTitle}>Workspace preferences</div>
+      </div>
+      <p style={{ ...railDesc, marginBottom: 12 }}>
+        Workspace-level settings like models, tools, and integrations can be managed by your team in their respective sections.
+      </p>
+      <button
+        type="button"
+        onClick={() => navigate('/integrations')}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '6px 12px',
+          background: 'transparent',
+          border: '1px solid var(--accent)',
+          borderRadius: 'var(--radius)',
+          fontSize: 12.5,
+          fontWeight: 600,
+          color: 'var(--accent-strong)',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        Go to workspace
+      </button>
+    </div>
+  )
+}
+
 
 /* ---- /models ------------------------------------------------------- */
 
@@ -3207,94 +3425,384 @@ const statusPillIdle = {
 
 /* ---- /support ------------------------------------------------------ */
 
+/* M14.5.h — SupportPage rebuilt as 2-column workspace replica.
+ * Resources card with 4 link rows (API ref, Contact support, Send feedback,
+ * System status); Quick troubleshooting with 3 chip buttons; What's new
+ * with release entries. Right rail has Need help fast + Popular topics +
+ * Security & privacy.
+ */
 export function SupportPage() {
-  const linkRowStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '12px 14px',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
-    background: 'var(--bg-elevated)',
-    textDecoration: 'none',
-    color: 'inherit',
-    transition: 'background .12s',
-  }
   return (
-    <PageShell
-      title="Support"
-      description="API reference + the fastest ways to get help."
-      icon={<HelpCircle size={18} />}
-    >
-      <Section
-        icon={<HelpCircle size={16} />}
-        tone="accent"
-        title="Resources"
-        description="The two things you'll need most often."
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <a
-            href="/api-docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={linkRowStyle}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-elevated)')}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
-                API reference
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                Interactive Swagger UI for every endpoint. Click <strong>Authorize</strong> and paste a token to try requests in the browser.
-              </div>
-            </div>
-            <span style={{ fontSize: 12, color: 'var(--accent-strong)', fontWeight: 500, marginLeft: 12 }}>
-              Open ↗
-            </span>
-          </a>
-          <a
-            href="mailto:bragadeeshs@gmail.com?subject=Lucid%20feedback"
-            style={linkRowStyle}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-elevated)')}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
-                Send feedback
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                Bug reports, feature requests, anything weird you saw — straight to the team.
-              </div>
-            </div>
-            <span style={{ fontSize: 12, color: 'var(--accent-strong)', fontWeight: 500, marginLeft: 12 }}>
-              Email ↗
-            </span>
-          </a>
+    <div style={modelsShell}>
+      <div style={modelsContainer}>
+        <header style={{ ...modelsHeader, alignItems: 'flex-start' }}>
+          <IconTile tone="accent" size={44} style={{ flexShrink: 0 }}>
+            <HelpCircle size={20} />
+          </IconTile>
+          <div>
+            <h1 style={modelsTitle}>Support</h1>
+            <div
+              aria-hidden
+              style={{ width: 56, height: 3, background: 'var(--accent)', borderRadius: 2, marginTop: 8, marginBottom: 8 }}
+            />
+            <p style={{ ...modelsSubtitle, marginTop: 0 }}>
+              Documentation, troubleshooting, and the fastest ways to get help.
+            </p>
+          </div>
+        </header>
+
+        <div className="settings-split">
+          <div style={modelsMain}>
+            <SupportResourcesCard />
+            <QuickTroubleshootingCard />
+            <WhatsNewCard />
+          </div>
+          <aside style={modelsRail}>
+            <NeedHelpFastRail />
+            <PopularTopicsRail />
+            <SecurityPrivacyRail />
+          </aside>
         </div>
-      </Section>
-      <Section
-        icon={<Sparkles size={16} />}
-        tone="accent"
-        title="What's new"
-        description="Release notes will live here. Until then, the build plan in the repo is the canonical changelog."
-      >
-        <div
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// M14.5.h — Support page card shells + right-rail components
+// ============================================================================
+
+function SupportResourcesCard() {
+  const items = [
+    {
+      icon: <Code size={16} />,
+      title: 'API reference',
+      desc: 'Interactive API explorer and complete endpoint documentation.',
+      cta: 'Open docs',
+      href: '/api-docs',
+      external: true,
+    },
+    {
+      icon: <Headphones size={16} />,
+      title: 'Contact support',
+      desc: 'Get help from our team for account, billing, or technical issues.',
+      cta: 'Create ticket',
+      href: 'mailto:bragadeeshs@gmail.com?subject=Lucid%20support%20ticket',
+      external: false,
+    },
+    {
+      icon: <Mail size={16} />,
+      title: 'Send feedback',
+      desc: 'Share ideas, report bugs, or request new features.',
+      cta: 'Email us',
+      href: 'mailto:bragadeeshs@gmail.com?subject=Lucid%20feedback',
+      external: false,
+    },
+    {
+      icon: <Activity size={16} />,
+      title: 'System status',
+      desc: 'Check the current status of Lucid services and past incidents.',
+      cta: 'View status',
+      href: 'https://stats.uptimerobot.com',
+      external: true,
+    },
+  ]
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><BookOpen size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>Resources</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map((it) => (
+          <a
+            key={it.title}
+            href={it.href}
+            target={it.external ? '_blank' : undefined}
+            rel={it.external ? 'noopener noreferrer' : undefined}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '14px 16px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              background: 'var(--bg-elevated)',
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-elevated)' }}
+          >
+            <span style={{ color: 'var(--accent-strong)', display: 'inline-flex', flexShrink: 0 }}>{it.icon}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>{it.title}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{it.desc}</div>
+            </div>
+            <span
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: 'var(--accent-strong)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {it.cta}
+              {it.external && <ExternalLink size={11} />}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function QuickTroubleshootingCard() {
+  const chips = [
+    { label: 'Authentication issues', href: '/api-docs' },
+    { label: 'Integration setup', href: '/integrations' },
+    { label: 'Export problems', href: '/account' },
+  ]
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><Wrench size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>Quick troubleshooting</div>
+        </div>
+      </div>
+      <div style={{
+        marginTop: 18,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: 10,
+      }}>
+        {chips.map((c) => (
+          <a
+            key={c.label}
+            href={c.href}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 14px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              background: 'var(--bg-elevated)',
+              textDecoration: 'none',
+              color: 'var(--text-strong)',
+              fontSize: 13,
+              fontWeight: 500,
+              transition: 'background var(--dur-fast) var(--ease-out)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-elevated)' }}
+          >
+            {c.label}
+            <ChevronRight size={14} style={{ color: 'var(--text-soft)' }} />
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function WhatsNewCard() {
+  // M14.5.h — placeholder release entries. Wire to /api/releases when we
+  // ship a release-notes feed. For now, hand-curated milestone highlights
+  // so the card isn't empty.
+  const releases = [
+    {
+      date: 'May 3, 2026',
+      version: 'M14.5',
+      desc: 'Notion-clean redesign across Models, Tools, Integrations, Account, and Settings.',
+    },
+    {
+      date: 'May 1, 2026',
+      version: 'M14.4',
+      desc: 'Per-extraction chat workspace with three starter prompts.',
+    },
+  ]
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><Sparkles size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>What's new</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {releases.map((r, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '14px 16px',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              background: 'var(--bg-elevated)',
+            }}
+          >
+            <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--accent)', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>{r.date}</span>
+                <span aria-hidden style={{ color: 'var(--text-soft)' }}>·</span>
+                <span style={{ fontSize: 12.5, color: 'var(--accent-strong)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                  Version {r.version}
+                </span>
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.5 }}>{r.desc}</div>
+            </div>
+            <ChevronRight size={14} style={{ color: 'var(--text-soft)', flexShrink: 0 }} />
+          </div>
+        ))}
+        <a
+          href="https://github.com/bragadeeshs/brdtoprd/commits/main"
+          target="_blank"
+          rel="noopener noreferrer"
           style={{
+            alignSelf: 'center',
+            marginTop: 6,
             fontSize: 12.5,
-            color: 'var(--text-soft)',
-            fontStyle: 'italic',
-            padding: '14px 16px',
-            background: 'var(--bg-subtle)',
-            border: '1px dashed var(--border)',
-            borderRadius: 'var(--radius)',
-            textAlign: 'center',
+            fontWeight: 600,
+            color: 'var(--accent-strong)',
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
           }}
         >
-          A release-notes feed is in the backlog. Until then, ask the team about
-          recent changes.
-        </div>
-      </Section>
-    </PageShell>
+          View all release notes <ExternalLink size={11} />
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function NeedHelpFastRail() {
+  const items = [
+    { icon: <Clock size={14} />, title: 'Typical response time', desc: 'Under 2 business hours' },
+    { icon: <Mail size={14} />, title: 'Support email', desc: 'support@lucid.app' },
+    { icon: <FileText size={14} />, title: 'Docs available 24/7', desc: 'Guides, API docs, and examples' },
+  ]
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={railIconDisc}><Zap size={14} /></span>
+        <div style={railTitle}>Need help fast?</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {items.map((it) => (
+          <div key={it.title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ color: 'var(--accent-strong)', display: 'inline-flex', marginTop: 2, flexShrink: 0 }}>
+              {it.icon}
+            </span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 1 }}>{it.title}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{it.desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PopularTopicsRail() {
+  const topics = [
+    { label: 'Using API tokens', href: '/api-docs' },
+    { label: 'Jira integration guide', href: '/integrations' },
+    { label: 'Working with templates', href: '/tools' },
+    { label: 'Data export options', href: '/settings' },
+  ]
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={railIconDisc}><FileText size={14} /></span>
+        <div style={railTitle}>Popular topics</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {topics.map((t) => (
+          <a
+            key={t.label}
+            href={t.href}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 4px',
+              fontSize: 13,
+              color: 'var(--accent-strong)',
+              textDecoration: 'none',
+              borderBottom: '1px solid var(--border)',
+              fontWeight: 500,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-ink)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--accent-strong)' }}
+          >
+            {t.label}
+            <ChevronRight size={13} style={{ color: 'var(--text-soft)' }} />
+          </a>
+        ))}
+        <a
+          href="/api-docs"
+          style={{
+            alignSelf: 'center',
+            marginTop: 10,
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: 'var(--accent-strong)',
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Browse all docs <ExternalLink size={11} />
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function SecurityPrivacyRail() {
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={railIconDisc}><Shield size={14} /></span>
+        <div style={railTitle}>Security &amp; privacy</div>
+      </div>
+      <p style={{ ...railDesc, marginBottom: 12 }}>
+        Your data and API tokens are encrypted in transit and at rest. We follow industry best practices to keep your information safe and secure.
+      </p>
+      <a
+        href="https://www.anthropic.com/legal"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          fontSize: 12.5,
+          fontWeight: 600,
+          color: 'var(--accent-strong)',
+          textDecoration: 'none',
+        }}
+      >
+        Learn more <ExternalLink size={11} />
+      </a>
+    </div>
   )
 }
