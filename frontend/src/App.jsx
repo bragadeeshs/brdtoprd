@@ -521,7 +521,7 @@ function AuthedApp() {
     extractAbortRef.current?.abort()
   }
 
-  const handleExtract = async ({ file, text, filename }) => {
+  const handleExtract = async ({ file, text, filename, lens: pickedLens }) => {
     setLoading(true)
     setStreamUsage(null)
     setPendingName(file ? file.name : filename)
@@ -530,9 +530,9 @@ function AuthedApp() {
     track('extraction_started', { input_chars: inputChars })
     const controller = new AbortController()
     extractAbortRef.current = controller
-    // M14.1.c — both lenses now stream via /api/extract/stream (the
-    // backend route dispatches by lens). New uploads default to dossier.
-    const lens = 'dossier'
+    // M14.5.b — lens comes from the EmptyState mode dropdown; default
+    // 'dossier' for any caller that doesn't pick one.
+    const lens = pickedLens || 'dossier'
     try {
       const record = await extractStream(
         { file, text, filename, lens },

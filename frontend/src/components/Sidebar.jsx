@@ -292,6 +292,10 @@ export default function Sidebar({ onNew, extractionContext }) {
           equally-weighted items. */}
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: 4, paddingBottom: 12 }}>
         <NavGroupLabel first>Workspace</NavGroupLabel>
+        {/* M14.5.b — "New Extraction" surfaces the / route as a clear active
+            target. Without this, users on the upload page had no sidebar item
+            highlighted. The Edit icon matches the brand row's "+ new" button. */}
+        <NavItem icon={<Edit size={16} />} label="New Extraction" to="/" />
         <NavItem icon={<FileText size={16} />} label="Documents" to="/documents" />
         <ProjectsSection />
 
