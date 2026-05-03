@@ -81,7 +81,17 @@ export default function DossierPane({ extraction }) {
 
         <Chapter id="orient" roman="I" title="Orient" intro={dossier.orient_intro}>
           <BriefSection brief={dossier.brief} terms={glossaryTerms} />
-          <Bridge text={dossier.bridge_brief_to_tldr} />
+          {/* M14.3 — Numbers Extract slot. Falls through to legacy bridge
+              for pre-M14.3 dossiers that don't have the new fields. */}
+          {dossier.numbers_extract?.facts?.length > 0 ? (
+            <>
+              <Bridge text={dossier.bridge_brief_to_numbers} />
+              <NumbersExtractSection extract={dossier.numbers_extract} terms={glossaryTerms} />
+              <Bridge text={dossier.bridge_numbers_to_tldr} />
+            </>
+          ) : (
+            <Bridge text={dossier.bridge_brief_to_tldr} />
+          )}
           <TLDRLadder ladder={dossier.tldr_ladder} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_tldr_to_5w1h} />
           <FiveW1H w={dossier.five_w_one_h} terms={glossaryTerms} />
@@ -94,7 +104,17 @@ export default function DossierPane({ extraction }) {
           <MindmapTree mindmap={dossier.mindmap} />
           <Bridge text={dossier.bridge_mindmap_to_domain} />
           <DomainGrid domain={dossier.domain} terms={glossaryTerms} />
-          <Bridge text={dossier.bridge_domain_to_systems} />
+          {/* M14.3 — Timeline slot. Falls through to legacy bridge for
+              pre-M14.3 dossiers. */}
+          {dossier.timeline?.phases?.length > 0 ? (
+            <>
+              <Bridge text={dossier.bridge_domain_to_timeline} />
+              <TimelineGantt timeline={dossier.timeline} terms={glossaryTerms} />
+              <Bridge text={dossier.bridge_timeline_to_systems} />
+            </>
+          ) : (
+            <Bridge text={dossier.bridge_domain_to_systems} />
+          )}
           <SystemsView systems={dossier.systems} terms={glossaryTerms} />
         </Chapter>
 
@@ -105,7 +125,17 @@ export default function DossierPane({ extraction }) {
           <AssumptionsAudit items={dossier.assumptions} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_assumptions_to_inversion} />
           <InversionList items={dossier.inversion} terms={glossaryTerms} />
-          <Bridge text={dossier.bridge_inversion_to_questions} />
+          {/* M14.3 — Negative Space slot. Falls through to legacy bridge
+              for pre-M14.3 dossiers. */}
+          {dossier.negative_space?.items?.length > 0 ? (
+            <>
+              <Bridge text={dossier.bridge_inversion_to_negative_space} />
+              <NegativeSpaceList space={dossier.negative_space} terms={glossaryTerms} />
+              <Bridge text={dossier.bridge_negative_space_to_questions} />
+            </>
+          ) : (
+            <Bridge text={dossier.bridge_inversion_to_questions} />
+          )}
           <BetterQuestions items={dossier.better_questions} terms={glossaryTerms} />
         </Chapter>
 
@@ -1078,6 +1108,226 @@ function UserStoriesSection({ stories, terms }) {
           </div>
         ))}
       </div>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// M14.3 — Section: Numbers Extract (scannable table grouped by category)
+// ============================================================================
+
+function NumbersExtractSection({ extract, terms }) {
+  if (!extract?.facts || extract.facts.length === 0) return null
+  // Group facts by category so cost/time/count read together. Keep stable
+  // order matching the schema enum order so the table feels deterministic.
+  const order = ['cost', 'time', 'count', 'percentage', 'other']
+  const grouped = order
+    .map((cat) => ({ cat, items: extract.facts.filter((f) => f.category === cat) }))
+    .filter((g) => g.items.length > 0)
+
+  const catLabel = {
+    cost: 'Cost',
+    time: 'Time',
+    count: 'Count',
+    percentage: 'Percentage',
+    other: 'Other',
+  }
+
+  return (
+    <SectionShell title="Numbers Extract">
+      <p style={{ margin: '0 0 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+        Every discrete number from the document, in one place. Click any "View source" to verify.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {grouped.map(({ cat, items }) => (
+          <div key={cat}>
+            <SubsectionHeader>{catLabel[cat]}</SubsectionHeader>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <tbody>
+                {items.map((f, i) => (
+                  <tr key={i}>
+                    <td style={numLabelTd}>
+                      <GlossaryTermified text={f.label} terms={terms} />
+                    </td>
+                    <td style={numValueTd}>
+                      {f.value}
+                    </td>
+                    <td style={numSourceTd}>
+                      {f.source ? <SourceQuote text={f.source} /> : (
+                        <ConfidenceBadge sourced={false} />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </SectionShell>
+  )
+}
+
+const numLabelTd = {
+  padding: '8px 12px 8px 0',
+  borderBottom: '1px solid var(--border)',
+  color: 'var(--text)',
+  width: '50%',
+  verticalAlign: 'top',
+}
+const numValueTd = {
+  padding: '8px 12px',
+  borderBottom: '1px solid var(--border)',
+  color: 'var(--text-strong)',
+  fontFamily: 'var(--font-mono)',
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  verticalAlign: 'top',
+}
+const numSourceTd = {
+  padding: '8px 0 8px 12px',
+  borderBottom: '1px solid var(--border)',
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'top',
+}
+
+// ============================================================================
+// M14.3 — Section: Timeline (horizontal phase sequence)
+// ============================================================================
+
+function TimelineGantt({ timeline, terms }) {
+  if (!timeline?.phases || timeline.phases.length === 0) return null
+  const phases = timeline.phases
+  return (
+    <SectionShell title="Timeline">
+      <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+        Phase sequence extracted from the document. Bars are equal-width — they show order, not duration.
+      </p>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${phases.length}, 1fr)`,
+          gap: 4,
+          marginBottom: 16,
+        }}
+      >
+        {phases.map((p, i) => (
+          <div
+            key={i}
+            style={{
+              padding: '8px 10px',
+              borderRadius: 'var(--radius-sm)',
+              background: i % 2 === 0 ? 'var(--accent-soft)' : 'var(--bg-subtle)',
+              borderTop: '3px solid ' + (i % 2 === 0 ? 'var(--accent)' : 'var(--accent-strong)'),
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: '0.04em',
+              color: i % 2 === 0 ? 'var(--accent-ink)' : 'var(--text-muted)',
+              textAlign: 'center',
+              textTransform: 'uppercase',
+            }}
+          >
+            {p.when}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {phases.map((p, i) => (
+          <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div
+              style={{
+                flexShrink: 0,
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                background: 'var(--accent-soft)',
+                color: 'var(--accent-ink)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {i + 1}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>
+                  {p.label}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {p.when}
+                </span>
+              </div>
+              {p.description && (
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  <GlossaryTermified text={p.description} terms={terms} />
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </SectionShell>
+  )
+}
+
+// ============================================================================
+// M14.3 — Section: Negative Space (what the doc DOESN'T say)
+// ============================================================================
+
+function NegativeSpaceList({ space, terms }) {
+  if (!space?.items || space.items.length === 0) return null
+  return (
+    <SectionShell title="Negative Space · what the doc doesn't say">
+      <p style={{ margin: '0 0 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+        Structural absences — sections, numbers, safeguards, or clauses you'd expect but the doc leaves out.
+      </p>
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {space.items.map((it, i) => (
+          <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <span
+              aria-hidden
+              style={{
+                flexShrink: 0,
+                width: 22,
+                height: 22,
+                borderRadius: 999,
+                background: 'var(--warn-soft)',
+                color: 'var(--warn-ink)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: 1,
+              }}
+              title="Missing from the document"
+            >
+              ∅
+            </span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>
+                <GlossaryTermified text={it.missing_item} terms={terms} />
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 3 }}>
+                <GlossaryTermified text={it.why_it_matters} terms={terms} />
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
     </SectionShell>
   )
 }

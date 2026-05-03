@@ -198,6 +198,63 @@ class RevisitItem(BaseModel):
     why: str = Field(description="Why it matters — the risk if you don't")
 
 
+# ============================================================================
+# M14.3 — structured extracts (Numbers / Negative Space / Timeline)
+# ============================================================================
+
+
+class NumberFact(BaseModel):
+    """One concrete number extracted from the document. Scannable in a table."""
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(description="What this number measures (e.g. 'Year-0 cost', 'Pilot duration')")
+    value: str = Field(description="The number with unit (e.g. '₹1.37 Cr', '12 weeks', '22 furnaces')")
+    category: Literal["cost", "time", "count", "percentage", "other"] = Field(
+        description="Coarse bucket so the table can group/sort"
+    )
+    source: str = Field(default="", description="Verbatim source quote if pulled directly; empty if inferred")
+
+
+class NumbersExtract(BaseModel):
+    """All the discrete numbers in the doc, in one scannable place. Pulls
+    costs, dates, durations, percentages, counts — anything quantitative.
+    Empty list if the doc has no quantitative content."""
+    model_config = ConfigDict(extra="forbid")
+    facts: list[NumberFact] = Field(default_factory=list)
+
+
+class NegativeSpaceItem(BaseModel):
+    """Something the document conspicuously DOESN'T say. Often the most
+    valuable thing to surface — gaps in vendor proposals, missing risk
+    sections in contracts, etc."""
+    model_config = ConfigDict(extra="forbid")
+    missing_item: str = Field(description="What's missing, in 1 line (e.g. 'no cybersecurity threat model')")
+    why_it_matters: str = Field(description="One sentence: why the absence matters / what risk it creates")
+
+
+class NegativeSpace(BaseModel):
+    """Proactive gap detection — 'what the doc DOESN'T say'. Especially
+    valuable for vendor proposals, contracts, RFPs. Empty list if the doc
+    is genuinely complete for its type."""
+    model_config = ConfigDict(extra="forbid")
+    items: list[NegativeSpaceItem] = Field(default_factory=list)
+
+
+class TimelinePhase(BaseModel):
+    """One phase / milestone in a timeline extracted from the doc."""
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(description="Phase name (e.g. 'Data discovery', 'MVP build')")
+    when: str = Field(description="When it happens — 'Weeks 0-2' / 'Q1 2026' / 'By Friday' / 'Day 30'")
+    description: str = Field(default="", description="1-2 sentences on what happens in this phase")
+
+
+class Timeline(BaseModel):
+    """Timeline / phase plan extracted from the doc. Renders as a simple
+    horizontal Gantt-style sequence. Empty list if the doc has no
+    schedule / phases / milestones."""
+    model_config = ConfigDict(extra="forbid")
+    phases: list[TimelinePhase] = Field(default_factory=list)
+
+
 class UserStory(BaseModel):
     """User-stories extraction folded in (M14.0 pick (b)) so the dossier
     contains the original user-stories use case as one section, not as a
@@ -227,7 +284,15 @@ class DocumentDossier(BaseModel):
     # ---- ACT I — Orient ----
     orient_intro: str = Field(description="One sentence opening Act I — the chapter's narrative purpose")
     brief: Brief
-    bridge_brief_to_tldr: str = Field(description="One-line bridge into TLDR Ladder — references the brief")
+    # M14.3 — Numbers Extract slots between Brief and TLDR. The brief tells
+    # you WHAT it is; the numbers tell you the SCALE before you read further.
+    bridge_brief_to_numbers: str = Field(default="", description="Bridge from Brief into Numbers Extract")
+    numbers_extract: NumbersExtract = Field(default_factory=NumbersExtract)
+    bridge_numbers_to_tldr: str = Field(default="", description="Bridge from Numbers Extract into TLDR Ladder")
+    bridge_brief_to_tldr: str = Field(
+        default="",
+        description="(Legacy) bridge directly Brief→TLDR. Pre-M14.3 dossiers used this. New ones leave empty + use the numbers bridges above.",
+    )
     tldr_ladder: TLDRLadder
     bridge_tldr_to_5w1h: str = Field(description="One-line bridge into 5W1H — references the TLDR")
     five_w_one_h: FiveW1H
@@ -242,7 +307,16 @@ class DocumentDossier(BaseModel):
     mindmap: Mindmap
     bridge_mindmap_to_domain: str
     domain: DomainBreakdown
-    bridge_domain_to_systems: str
+    # M14.3 — Timeline slots between Domain and Systems. Domain is the
+    # static anatomy; Timeline is the temporal anatomy; Systems is how
+    # parts interact — natural order.
+    bridge_domain_to_timeline: str = Field(default="", description="Bridge from Domain into Timeline")
+    timeline: Timeline = Field(default_factory=Timeline)
+    bridge_timeline_to_systems: str = Field(default="", description="Bridge from Timeline into Systems View")
+    bridge_domain_to_systems: str = Field(
+        default="",
+        description="(Legacy) bridge Domain→Systems. Pre-M14.3 dossiers used this; new ones use the timeline bridges above.",
+    )
     systems: SystemsView
 
     # ---- ACT III — Interrogate ----
@@ -255,7 +329,17 @@ class DocumentDossier(BaseModel):
     assumptions: list[Assumption] = Field(description="3-7 hidden premises the doc rests on")
     bridge_assumptions_to_inversion: str
     inversion: list[FailureMode] = Field(description="3-7 ways this could fail catastrophically")
-    bridge_inversion_to_questions: str
+    # M14.3 — Negative Space slots between Inversion and Better Questions.
+    # Inversion = what could fail (concrete scenarios); Negative Space = what's
+    # MISSING entirely from the doc; Better Questions = what to ask next. Reads
+    # as "stress test → gap audit → next steps."
+    bridge_inversion_to_negative_space: str = Field(default="", description="Bridge Inversion → Negative Space")
+    negative_space: NegativeSpace = Field(default_factory=NegativeSpace)
+    bridge_negative_space_to_questions: str = Field(default="", description="Bridge Negative Space → Better Questions")
+    bridge_inversion_to_questions: str = Field(
+        default="",
+        description="(Legacy) bridge Inversion→Better Questions. Pre-M14.3 dossiers used this; new ones use the negative-space bridges above.",
+    )
     better_questions: list[ProbingQuestion] = Field(description="5-10 smart questions the doc doesn't answer")
 
     # ---- ACT IV — Act ----
@@ -323,8 +407,20 @@ Rules:
   This is the highest-leverage section — hidden assumptions are where most surprises \
   come from.
 - Inversion: distinct from Assumptions. "What concrete failure scenarios could play out?"
+- Negative Space: what the doc DOESN'T say but should — missing sections, missing \
+  numbers, missing risks, missing safeguards. Distinct from Better Questions (which \
+  asks for clarification of what's there); Negative Space surfaces structural absences. \
+  E.g. "no SLA terms" / "no data privacy section" / "no exit clause." Empty list only \
+  when the doc is genuinely complete for its type.
 - Better Questions: questions the doc DOESN'T answer that a sharp reader would ask. Not \
   rephrasings of things the doc already covers.
+- Numbers Extract: pull EVERY discrete number/value from the doc (costs, dates, \
+  durations, percentages, counts). Use the source field for the verbatim line where \
+  the number appears. Categorize as cost / time / count / percentage / other. Empty \
+  list only if the doc is genuinely qualitative (most aren't).
+- Timeline: extract any phase plan, schedule, milestone sequence, or roadmap into \
+  ordered phases. Use the document's own time units in the `when` field ("Weeks 0-2" / \
+  "Q1" / "Day 30"). Empty list when the doc has no temporal structure.
 - Domain Breakdown has exactly 7 fixed branches (Business Purpose / Stakeholders / \
   Process Flow / Data / Rules / Metrics / Problems-Opportunities). If a branch \
   genuinely doesn't apply to the doc, populate with 1-2 points explaining the gap.
@@ -334,6 +430,13 @@ Rules:
 - Adapt tone to the doc type: a research paper dossier reads more academically than a \
   vendor-proposal dossier. Don't pretend everything is a BRD.
 - The Overture's tease and What to Revisit's items must match — the story must pay off.
+
+Bridge writing (M14.3): use the NEW bridges (bridge_brief_to_numbers, \
+bridge_numbers_to_tldr, bridge_domain_to_timeline, bridge_timeline_to_systems, \
+bridge_inversion_to_negative_space, bridge_negative_space_to_questions). Leave the \
+LEGACY bridges (bridge_brief_to_tldr, bridge_domain_to_systems, \
+bridge_inversion_to_questions) as empty strings. They exist in the schema only for \
+backward compatibility with old saved dossiers — your output should never use them.
 
 Length guidance: Overture ~80 words. Bridges ~15-25 words each. Brief 2 sentences. \
 TLDR ladder 1/3/15 sentences. Bridges should feel airy, not dense. Other sections as \
@@ -421,7 +524,11 @@ def _mock(filename: str, raw_text: str) -> DocumentDossier:
             summary=f"Mock summary of {filename}.",
             tags=["mock", "no-api-key"],
         ),
-        bridge_brief_to_tldr="Three depths follow.",
+        bridge_brief_to_numbers="The numbers behind it:",
+        numbers_extract=NumbersExtract(facts=[
+            NumberFact(label="Mock value", value="42 mocks", category="count", source=""),
+        ]),
+        bridge_numbers_to_tldr="Now three reading depths:",
         tldr_ladder=TLDRLadder(
             one_line=f"Mock dossier for {filename}.",
             one_paragraph="This is mock-mode placeholder content. Configure the API key to get a real analysis.",
@@ -454,7 +561,12 @@ def _mock(filename: str, raw_text: str) -> DocumentDossier:
             metrics=DomainBranch(points=["Mock"]),
             problems_opportunities=DomainBranch(points=["Mock"]),
         ),
-        bridge_domain_to_systems="System view:",
+        bridge_domain_to_timeline="The temporal anatomy:",
+        timeline=Timeline(phases=[
+            TimelinePhase(label="Mock phase 1", when="Day 0", description="Configure the API key."),
+            TimelinePhase(label="Mock phase 2", when="Day 1", description="Run a real extraction."),
+        ]),
+        bridge_timeline_to_systems="System view:",
         systems=SystemsView(entities=[], flows=[], feedback_loops=[]),
         bridge_systems_to_interrogate="Now what's underneath.",
         interrogate_intro="Mock interrogation section.",
@@ -475,7 +587,11 @@ def _mock(filename: str, raw_text: str) -> DocumentDossier:
         ],
         bridge_assumptions_to_inversion="What could go wrong:",
         inversion=[FailureMode(scenario="The user thinks this is a real analysis.", likelihood="low")],
-        bridge_inversion_to_questions="Better questions:",
+        bridge_inversion_to_negative_space="What's missing:",
+        negative_space=NegativeSpace(items=[
+            NegativeSpaceItem(missing_item="No real document content", why_it_matters="Mock mode can't show structural absences in the actual doc."),
+        ]),
+        bridge_negative_space_to_questions="Better questions:",
         better_questions=[
             ProbingQuestion(question="Is the API key configured?", why_it_matters="Determines whether you get real or mock output."),
         ],
