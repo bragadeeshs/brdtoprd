@@ -483,9 +483,9 @@ export const Logo = ({ size = 28 }) => (
     />
     <defs>
       <linearGradient id="sf-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stopColor="#0d9488" />
-        <stop offset="0.5" stopColor="#06b6d4" />
-        <stop offset="1" stopColor="#0ea5e9" />
+        <stop offset="0" stopColor="#4f46e5" />
+        <stop offset="0.5" stopColor="#6366f1" />
+        <stop offset="1" stopColor="#8b5cf6" />
       </linearGradient>
     </defs>
   </svg>

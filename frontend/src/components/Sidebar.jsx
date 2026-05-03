@@ -229,10 +229,9 @@ export default function Sidebar({ onNew, extractionContext }) {
   const navigate = useNavigate()
   return (
     <aside
+      className="app-sidebar"
       style={{
         width: 248,
-        background: 'var(--bg-subtle)',
-        borderRight: '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,

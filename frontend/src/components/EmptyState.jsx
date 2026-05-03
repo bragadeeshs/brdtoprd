@@ -587,7 +587,7 @@ const primaryCta = {
   fontWeight: 600,
   letterSpacing: '-0.005em',
   width: '100%',
-  boxShadow: '0 4px 12px -2px rgba(20, 184, 166, 0.35)',
+  boxShadow: '0 4px 12px -2px rgba(99, 102, 241, 0.35)',
   transition: 'transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
 }
 

@@ -20,13 +20,29 @@
   /* Borders — M14.5 cooler / lighter; less warm than the M10.1 sand. */
   --border: #ebebe7;
   --border-strong: #d8d8d3;
-  --border-focus: #14b8a6;
+  --border-focus: #6366f1;
 
-  /* Accents */
-  --accent: #14b8a6;          /* teal-500 — M13.4 brand swap */
-  --accent-strong: #0d9488;   /* teal-600 */
-  --accent-soft: #f0fdfa;     /* teal-50 */
-  --accent-ink: #0f766e;      /* teal-700 */
+  /* Accents — M14.5.j: theme swap teal → indigo. Matches the design
+     replica's purple-violet palette + always-dark navy sidebar. */
+  --accent: #6366f1;          /* indigo-500 */
+  --accent-strong: #4f46e5;   /* indigo-600 — primary CTA bg */
+  --accent-soft: #eef2ff;     /* indigo-50 — chip backgrounds */
+  --accent-ink: #4338ca;      /* indigo-700 — text on accent-soft */
+
+  /* Sidebar — always dark navy regardless of light/dark theme. The
+     "dark sidebar + light main" pattern is brand identity (Anthropic
+     Console / Linear / Vercel dashboard). Sidebar vars don't get
+     overridden in the dark-theme block. */
+  --sidebar-bg: #0b1220;        /* deep navy */
+  --sidebar-bg-elev: #131c2f;   /* hover / active row */
+  --sidebar-bg-subtle: #131c2f; /* secondary surface */
+  --sidebar-border: #1e293b;    /* subtle dividers */
+  --sidebar-text-strong: #f1f5f9;
+  --sidebar-text: #cbd5e1;
+  --sidebar-text-muted: #94a3b8;
+  --sidebar-text-soft: #64748b;
+  --sidebar-active-bg: #6366f1;     /* indigo accent fill on active nav */
+  --sidebar-active-text: #ffffff;
 
   --success: #10b981;
   --success-soft: #ecfdf5;
@@ -53,7 +69,7 @@
   --pink-ink: #be185d;
 
   /* Hero gradient (text) — M13.4 swapped to teal → cyan → sky */
-  --gradient: linear-gradient(90deg, #0d9488 0%, #06b6d4 50%, #0ea5e9 100%);
+  --gradient: linear-gradient(90deg, #4f46e5 0%, #6366f1 50%, #8b5cf6 100%);
 
   /* Type */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -67,7 +83,7 @@
   --shadow-sm: 0 1px 3px rgba(24, 24, 27, 0.04);
   --shadow-md: 0 2px 6px rgba(24, 24, 27, 0.05), 0 1px 2px rgba(24, 24, 27, 0.04);
   --shadow-lg: 0 8px 24px -8px rgba(24, 24, 27, 0.10);
-  --shadow-focus: 0 0 0 3px rgba(20, 184, 166, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.20);
 
   /* Radii */
   --radius-sm: 6px;
@@ -120,12 +136,12 @@
   /* Hero gradient — the only piece of the brand we let bloom large.
    * Reserve for: empty states, sign-in screen, the Logo. Never on
    * standard buttons or cards (would dilute the moment). */
-  --gradient-hero: linear-gradient(135deg, #0d9488 0%, #06b6d4 50%, #0ea5e9 100%);
+  --gradient-hero: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #8b5cf6 100%);
   /* M14.5 — soft gradient pulled WAY down (was 0.06-0.08, now ~0.025).
      Used as a barely-there tint behind hero blocks; reads as ambient
      light rather than decoration. Marketing surfaces (Landing) keep the
      louder gradient via their own --lp-* tokens. */
-  --gradient-soft: linear-gradient(135deg, rgba(13, 148, 136, 0.025) 0%, rgba(6, 182, 212, 0.018) 50%, rgba(14, 165, 233, 0.025) 100%);
+  --gradient-soft: linear-gradient(135deg, rgba(99, 102, 241, 0.025) 0%, rgba(124, 58, 237, 0.018) 50%, rgba(139, 92, 246, 0.025) 100%);
 
   /* M10.2 — Typography scale.
    *
@@ -169,7 +185,7 @@ html[data-theme='dark'] {
   --surface-1: #18181b;
   --surface-2: #1f1f23;
   --surface-3: #27272a;
-  --gradient-soft: linear-gradient(135deg, rgba(45, 212, 191, 0.10) 0%, rgba(34, 211, 238, 0.08) 50%, rgba(56, 189, 248, 0.10) 100%);
+  --gradient-soft: linear-gradient(135deg, rgba(129, 140, 248, 0.10) 0%, rgba(167, 139, 250, 0.08) 50%, rgba(196, 181, 253, 0.10) 100%);
 
   --text-strong: #fafafa;
   --text: #e4e4e7;
@@ -179,10 +195,10 @@ html[data-theme='dark'] {
   --border: #27272a;
   --border-strong: #3f3f46;
 
-  --accent: #2dd4bf;          /* teal-400 — dark-theme equivalent of teal-500 */
-  --accent-strong: #14b8a6;   /* teal-500 */
-  --accent-soft: #134e4a;     /* teal-900 — chip backgrounds */
-  --accent-ink: #99f6e4;      /* teal-200 — text on accent-soft */
+  --accent: #818cf8;          /* indigo-400 — dark-theme equivalent of indigo-500 */
+  --accent-strong: #6366f1;   /* indigo-500 */
+  --accent-soft: #1e1b4b;     /* indigo-950 — chip backgrounds */
+  --accent-ink: #c7d2fe;      /* indigo-200 — text on accent-soft */
 
   --success-soft: #022c22;
   --success-ink: #a7f3d0;
@@ -201,7 +217,7 @@ html[data-theme='dark'] {
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
-  --shadow-focus: 0 0 0 3px rgba(45, 212, 191, 0.28);
+  --shadow-focus: 0 0 0 3px rgba(129, 140, 248, 0.30);
 }
 
 /* =========================================================================
@@ -684,8 +700,8 @@ a:hover {
   --lp-text-fainter: #5e5f70;
   --lp-cta-bg: #ffffff;
   --lp-cta-fg: #0a0a0c;
-  --lp-accent-1: rgba(20, 184, 166, 0.30);   /* teal-500 alpha */
-  --lp-accent-2: rgba(6, 182, 212, 0.25);    /* cyan-500 alpha */
+  --lp-accent-1: rgba(99, 102, 241, 0.30);   /* indigo-500 alpha */
+  --lp-accent-2: rgba(139, 92, 246, 0.25);   /* violet-500 alpha */
   --lp-vignette: rgba(10, 10, 12, 0.85);
 }
 
@@ -704,8 +720,8 @@ a:hover {
     --lp-text-fainter: #9a9ba8;
     --lp-cta-bg: #0a0a0c;
     --lp-cta-fg: #ffffff;
-    --lp-accent-1: rgba(20, 184, 166, 0.18);
-    --lp-accent-2: rgba(6, 182, 212, 0.14);
+    --lp-accent-1: rgba(99, 102, 241, 0.18);
+    --lp-accent-2: rgba(139, 92, 246, 0.14);
     --lp-vignette: rgba(250, 250, 249, 0.85);
   }
 }
@@ -1031,4 +1047,52 @@ a:hover {
 }
 @media (min-width: 1080px) {
   .documents-kpi-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* M14.5.j — Sidebar always-dark theme. Locally redefines the surface +
+   text vars on the .app-sidebar element so every child (NavItem,
+   ProjectsSection, UsageBar, UserPill, etc.) inherits the navy
+   palette without per-component edits. The accent vars stay global —
+   the active-nav indigo pill should match the rest of the app's accent.
+   These overrides apply IN BOTH light and dark themes (the dark
+   sidebar is brand identity, not a theme variant). */
+.app-sidebar {
+  --bg: var(--sidebar-bg);
+  --bg-elevated: var(--sidebar-bg-elev);
+  --bg-subtle: var(--sidebar-bg);
+  --bg-hover: var(--sidebar-bg-elev);
+  --border: var(--sidebar-border);
+  --border-strong: var(--sidebar-border);
+  --text-strong: var(--sidebar-text-strong);
+  --text: var(--sidebar-text);
+  --text-muted: var(--sidebar-text-muted);
+  --text-soft: var(--sidebar-text-soft);
+  --surface-0: var(--sidebar-bg);
+  --surface-1: var(--sidebar-bg-elev);
+  --surface-2: var(--sidebar-bg-elev);
+  --surface-3: var(--sidebar-bg-elev);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  border-right: 1px solid var(--sidebar-border);
+}
+.app-sidebar a,
+.app-sidebar button {
+  color: inherit;
+}
+.app-sidebar .nav-link {
+  color: var(--sidebar-text-muted);
+}
+.app-sidebar .nav-link:hover {
+  background: var(--sidebar-bg-elev);
+  color: var(--sidebar-text-strong);
+}
+.app-sidebar .nav-link.active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 10px -4px rgba(99, 102, 241, 0.45);
+}
+.app-sidebar .nav-link.active:hover {
+  background: #4f46e5;  /* indigo-600 — slightly darker on hover */
 }

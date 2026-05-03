@@ -690,7 +690,7 @@ export default function Documents() {
                 fontWeight: 600,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
-                boxShadow: '0 2px 8px -2px rgba(20, 184, 166, 0.30)',
+                boxShadow: '0 2px 8px -2px rgba(99, 102, 241, 0.30)',
               }}
             >
               <Plus size={13} />

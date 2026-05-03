@@ -56,7 +56,7 @@ const blobBase = {
   width: 320,
   height: 320,
   borderRadius: '50%',
-  background: 'radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.18), rgba(6, 182, 212, 0.05) 60%, transparent)',
+  background: 'radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.20), rgba(139, 92, 246, 0.05) 60%, transparent)',
   filter: 'blur(40px)',
   pointerEvents: 'none',
   zIndex: 0,
@@ -72,7 +72,7 @@ const blobBottomRight = {
   ...blobBase,
   bottom: -120,
   right: -120,
-  background: 'radial-gradient(circle at 70% 70%, rgba(6, 182, 212, 0.16), rgba(14, 165, 233, 0.05) 60%, transparent)',
+  background: 'radial-gradient(circle at 70% 70%, rgba(139, 92, 246, 0.18), rgba(168, 85, 247, 0.05) 60%, transparent)',
 }
 
 // SVG dot grid, repeated as a CSS background-image so we don't ship
