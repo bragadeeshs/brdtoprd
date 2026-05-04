@@ -31,6 +31,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ConfidenceBadge, GlossaryTermified, SourceQuote } from './annotations.jsx'
 import ChatPanel from './ChatPanel.jsx'
+import { H2, H3, P, UL, LI, OL, OLI } from './markdown.jsx'
 
 export default function DossierPane({ extraction }) {
   const dossier = extraction?.lens_payload
@@ -177,14 +178,15 @@ const paneShell = {
 
 const contentColumn = {
   width: '100%',
-  /* M14.5 — flex-fluid width with sensible bounds. Reads naturally on
-     anything from 13" to 32"; never gets line-length-uncomfortable. */
-  maxWidth: 'min(960px, 92vw)',
+  /* M14.5.l — narrowed to the markdown sweet spot (~70ch). Card-grids
+     opt out via their own width. Long-document feel rather than
+     stacked-widget feel. */
+  maxWidth: 'min(800px, 92vw)',
   margin: '0 auto',
   padding: 'clamp(32px, 5vw, 64px) clamp(20px, 4vw, 48px) 120px',
   display: 'flex',
   flexDirection: 'column',
-  gap: 32,
+  gap: 40,
 }
 
 const emptyShell = {
@@ -322,8 +324,8 @@ function Closing({ text }) {
 
 function Chapter({ id, roman, title, intro, children }) {
   return (
-    <section id={id} style={{ marginTop: 48 }}>
-      <header style={{ marginBottom: 24 }}>
+    <section id={id} style={{ marginTop: 32 }}>
+      <header style={{ marginBottom: 20 }}>
         <div
           style={{
             fontSize: 11,
@@ -341,7 +343,7 @@ function Chapter({ id, roman, title, intro, children }) {
             style={{
               margin: 0,
               fontSize: 16,
-              lineHeight: 1.55,
+              lineHeight: 1.6,
               color: 'var(--text-muted)',
               fontStyle: 'italic',
               fontFamily: 'var(--font-display)',
@@ -351,7 +353,7 @@ function Chapter({ id, roman, title, intro, children }) {
           </p>
         )}
       </header>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
         {children}
       </div>
     </section>
@@ -388,34 +390,14 @@ function Bridge({ text }) {
 // Section: Brief
 // ============================================================================
 
-function SectionTitle({ children }) {
-  return (
-    <h3
-      style={{
-        margin: 0,
-        fontFamily: 'var(--font-display)',
-        fontSize: 24,
-        fontWeight: 600,
-        color: 'var(--text-strong)',
-        letterSpacing: '-0.015em',
-        lineHeight: 1.2,
-      }}
-    >
-      {children}
-    </h3>
-  )
-}
-
-/* M14.5 — section shell flattened. Was a bordered/shadowed white card on
-   a slightly tinted page; now sections sit directly on the page surface
-   separated by whitespace + the section title's visual weight. Reads as
-   "long document" rather than "stacked widgets" — matches the Notion
-   page-as-canvas pattern. */
+/* M14.5.l — section shell uses the markdown H2 primitive (one canonical
+   heading scale across the dossier). The 14px header→content gap matches
+   the markdown vertical-rhythm spec. */
 function SectionShell({ title, children }) {
   return (
-    <section style={{ paddingTop: 8 }}>
-      <header style={{ marginBottom: 16 }}>
-        <SectionTitle>{title}</SectionTitle>
+    <section style={{ paddingTop: 4 }}>
+      <header style={{ marginBottom: 14 }}>
+        <H2>{title}</H2>
       </header>
       {children}
     </section>
@@ -426,9 +408,9 @@ function BriefSection({ brief, terms }) {
   if (!brief) return null
   return (
     <SectionShell title="Brief">
-      <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: 'var(--text)' }}>
+      <P>
         <GlossaryTermified text={brief.summary} terms={terms} />
-      </p>
+      </P>
       {brief.tags && brief.tags.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
           {brief.tags.map((t) => (
@@ -745,8 +727,8 @@ function SystemsView({ systems, terms }) {
 
 function SubsectionHeader({ children }) {
   return (
-    <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-soft)', marginBottom: 6 }}>
-      {children}
+    <div style={{ marginBottom: 8 }}>
+      <H3>{children}</H3>
     </div>
   )
 }
@@ -759,42 +741,23 @@ function FiveWhys({ steps, terms }) {
   if (!steps || steps.length === 0) return null
   return (
     <SectionShell title="5 Whys">
-      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <OL>
         {steps.map((s, i) => (
-          <li key={i} style={{ display: 'flex', gap: 14 }}>
-            <div
-              style={{
-                flexShrink: 0,
-                width: 28,
-                height: 28,
-                borderRadius: 999,
-                background: 'var(--accent-soft)',
-                color: 'var(--accent-ink)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {i + 1}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)', flex: 1 }}>
-                  <GlossaryTermified text={s.question} terms={terms} />
-                </div>
-                <ConfidenceBadge sourced={!!s.evidence} />
+          <OLI key={i} n={i + 1}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 600, color: 'var(--text-strong)', flex: 1 }}>
+                <GlossaryTermified text={s.question} terms={terms} />
               </div>
-              <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55 }}>
-                → <GlossaryTermified text={s.answer} terms={terms} />
-              </div>
-              <SourceQuote text={s.evidence} />
+              <ConfidenceBadge sourced={!!s.evidence} />
             </div>
-          </li>
+            <div style={{ marginTop: 4, color: 'var(--text)' }}>
+              <span style={{ color: 'var(--text-soft)', marginRight: 6 }}>→</span>
+              <GlossaryTermified text={s.answer} terms={terms} />
+            </div>
+            <SourceQuote text={s.evidence} />
+          </OLI>
         ))}
-      </ol>
+      </OL>
     </SectionShell>
   )
 }
@@ -865,13 +828,27 @@ function InversionList({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
     <SectionShell title="Inversion · what could go catastrophically wrong">
-      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items.map((f, i) => (
-          <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ color: 'var(--danger-ink)', fontFamily: 'var(--font-mono)', flexShrink: 0, marginTop: 2 }}>×</span>
-            <p style={{ margin: 0, fontSize: 14, color: 'var(--text)', lineHeight: 1.55, flex: 1 }}>
+          <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 15, lineHeight: 1.65 }}>
+            <span
+              style={{
+                color: 'var(--danger-ink)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 16,
+                fontWeight: 700,
+                flexShrink: 0,
+                width: 14,
+                textAlign: 'center',
+                paddingTop: 1,
+              }}
+              aria-hidden
+            >
+              ×
+            </span>
+            <span style={{ flex: 1, color: 'var(--text)' }}>
               <GlossaryTermified text={f.scenario} terms={terms} />
-            </p>
+            </span>
             {f.likelihood && (
               <span
                 style={{
@@ -882,7 +859,7 @@ function InversionList({ items, terms }) {
                   color: 'var(--text-soft)',
                   fontFamily: 'var(--font-mono)',
                   flexShrink: 0,
-                  marginTop: 2,
+                  paddingTop: 4,
                 }}
               >
                 {f.likelihood}
@@ -903,20 +880,20 @@ function BetterQuestions({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
     <SectionShell title="Better Questions">
-      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <OL>
         {items.map((q, i) => (
-          <li key={i}>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-strong)', lineHeight: 1.5 }}>
-              {i + 1}. <GlossaryTermified text={q.question} terms={terms} />
-            </p>
+          <OLI key={i} n={i + 1}>
+            <span style={{ fontWeight: 500, color: 'var(--text-strong)' }}>
+              <GlossaryTermified text={q.question} terms={terms} />
+            </span>
             {q.why_it_matters && (
-              <p style={{ margin: '4px 0 0 18px', fontSize: 12.5, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              <div style={{ marginTop: 4, fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.55 }}>
                 <GlossaryTermified text={q.why_it_matters} terms={terms} />
-              </p>
+              </div>
             )}
-          </li>
+          </OLI>
         ))}
-      </ol>
+      </OL>
     </SectionShell>
   )
 }
@@ -996,28 +973,28 @@ function DecisionsRecord({ made = [], open = [], terms }) {
   return (
     <SectionShell title="Decisions">
       {made.length > 0 && (
-        <>
+        <div style={{ marginBottom: open.length > 0 ? 18 : 0 }}>
           <SubsectionHeader>Decisions made</SubsectionHeader>
-          <ul style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: 14, lineHeight: 1.55, color: 'var(--text)' }}>
+          <UL>
             {made.map((d, i) => (
-              <li key={i} style={{ marginBottom: 4 }}>
+              <LI key={i}>
                 <GlossaryTermified text={d} terms={terms} />
-              </li>
+              </LI>
             ))}
-          </ul>
-        </>
+          </UL>
+        </div>
       )}
       {open.length > 0 && (
-        <>
+        <div>
           <SubsectionHeader>Open / unresolved</SubsectionHeader>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, lineHeight: 1.55, color: 'var(--text-muted)' }}>
+          <UL>
             {open.map((d, i) => (
-              <li key={i} style={{ marginBottom: 4 }}>
+              <LI key={i} muted>
                 <GlossaryTermified text={d} terms={terms} />
-              </li>
+              </LI>
             ))}
-          </ul>
-        </>
+          </UL>
+        </div>
       )}
     </SectionShell>
   )
@@ -1031,32 +1008,18 @@ function WhatToRevisit({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
     <SectionShell title="What to Revisit">
-      <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <OL>
         {items.map((r, i) => (
-          <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-            <span
-              style={{
-                flexShrink: 0,
-                fontFamily: 'var(--font-mono)',
-                fontSize: 13,
-                fontWeight: 700,
-                color: 'var(--accent-strong)',
-                marginTop: 2,
-              }}
-            >
-              {i + 1}.
-            </span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)', marginBottom: 2 }}>
-                <GlossaryTermified text={r.item} terms={terms} />
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                <GlossaryTermified text={r.why} terms={terms} />
-              </div>
+          <OLI key={i} n={i + 1}>
+            <div style={{ fontWeight: 500, color: 'var(--text-strong)' }}>
+              <GlossaryTermified text={r.item} terms={terms} />
             </div>
-          </li>
+            <div style={{ marginTop: 3, fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+              <GlossaryTermified text={r.why} terms={terms} />
+            </div>
+          </OLI>
         ))}
-      </ol>
+      </OL>
     </SectionShell>
   )
 }
@@ -1069,9 +1032,9 @@ function UserStoriesSection({ stories, terms }) {
   if (!stories || stories.length === 0) return null
   return (
     <SectionShell title="User Stories">
-      <p style={{ margin: '0 0 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+      <P muted style={{ marginBottom: 14, fontSize: 13 }}>
         The doc is requirements-shaped — Lucid extracted user stories with acceptance criteria.
-      </p>
+      </P>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {stories.map((s) => (
           <div
@@ -1135,9 +1098,9 @@ function NumbersExtractSection({ extract, terms }) {
 
   return (
     <SectionShell title="Numbers Extract">
-      <p style={{ margin: '0 0 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+      <P muted style={{ marginBottom: 14, fontSize: 13 }}>
         Every discrete number from the document, in one place. Click any "View source" to verify.
-      </p>
+      </P>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {grouped.map(({ cat, items }) => (
           <div key={cat}>
@@ -1201,9 +1164,9 @@ function TimelineGantt({ timeline, terms }) {
   const phases = timeline.phases
   return (
     <SectionShell title="Timeline">
-      <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+      <P muted style={{ marginBottom: 16, fontSize: 13 }}>
         Phase sequence extracted from the document. Bars are equal-width — they show order, not duration.
-      </p>
+      </P>
       <div
         style={{
           display: 'grid',
@@ -1290,9 +1253,9 @@ function NegativeSpaceList({ space, terms }) {
   if (!space?.items || space.items.length === 0) return null
   return (
     <SectionShell title="Negative Space · what the doc doesn't say">
-      <p style={{ margin: '0 0 14px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+      <P muted style={{ marginBottom: 14, fontSize: 13 }}>
         Structural absences — sections, numbers, safeguards, or clauses you'd expect but the doc leaves out.
-      </p>
+      </P>
       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {space.items.map((it, i) => (
           <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1318,10 +1281,10 @@ function NegativeSpaceList({ space, terms }) {
               ∅
             </span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>
+              <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-strong)', lineHeight: 1.5 }}>
                 <GlossaryTermified text={it.missing_item} terms={terms} />
               </div>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 3 }}>
+              <div style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.55, marginTop: 3 }}>
                 <GlossaryTermified text={it.why_it_matters} terms={terms} />
               </div>
             </div>
